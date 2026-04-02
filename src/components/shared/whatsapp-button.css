@@ -1,0 +1,104 @@
+.whatsapp-float-container {
+  position: fixed;
+  bottom: 5px;
+  right: 10px;
+  z-index: 934278934276872346767;
+}
+
+.whatsapp-float-button {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  background-color: #de0101;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  padding: 0;
+  overflow: visible;
+}
+
+.whatsapp-float-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.whatsapp-float-button:active {
+  transform: scale(0.95);
+}
+
+.rotating-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: rotate360 10s linear infinite;
+  pointer-events: none;
+}
+
+.circular-text {
+  fill: white;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+}
+
+@keyframes rotate360 {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .whatsapp-float-container {
+    bottom: 10px;
+    right: 10px;
+  }
+
+  .whatsapp-float-button {
+    width: 70px;
+    height: 70px;
+  }
+
+  .rotating-text {
+    width: 70px;
+    height: 70px;
+  }
+
+  .circular-text {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .whatsapp-float-container {
+    bottom: 15px;
+    right: 15px;
+  }
+
+  .whatsapp-float-button {
+    width: 65px;
+    height: 65px;
+  }
+
+  .rotating-text {
+    width: 65px;
+    height: 65px;
+  }
+
+  .circular-text {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+}
