@@ -67,7 +67,7 @@ export function SubscriptionReviewStep({ formData, onNext, onBack }: Subscriptio
   const itemGST = Math.round(discountedItemAmount * 0.05);
   
   // Calculate delivery charges based on plan type
-  const deliveryBase = getSubscriptionDeliveryFee(planType);
+  const deliveryBase = getSubscriptionDeliveryFee(planType, duration);
   const deliveryGST = Math.round(deliveryBase * 0.18); // 18% GST on delivery
   const deliveryCharges = deliveryBase + deliveryGST;
   
