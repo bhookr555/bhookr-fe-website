@@ -155,23 +155,10 @@ export default function SubscriptionPage() {
   const updatedData = user ? { ...data, userId: user.uid } : data;
   updateFormData({ personalInfo: updatedData });
 
-  // ✅ NEW: Submit partial lead to Google Sheets immediately after Step 1
+  // Submit partial lead using existing convertToLeadData helper
   try {
     await submitLead({
-      name: updatedData.fullName,
-      email: updatedData.email,
-      phoneNumber: updatedData.phoneNumber,
-      age: updatedData.age,
-      gender: '',
-      height: 0,
-      weight: 0,
-      goal: '',
-      diet: '',
-      foodPreference: '',
-      physicalState: '',
-      subscriptionType: '',
-      plan: '',
-      subscriptionStartDate: new Date().toISOString().split('T')[0],
+      ...convertToLeadData({ personalInfo: updatedData }),
       status: 'partial_lead',
       lastStepCompleted: 1,
       checkoutVisited: false,
@@ -179,7 +166,6 @@ export default function SubscriptionPage() {
     console.log('✅ Partial lead saved from Step 1');
   } catch (error) {
     console.error('❌ Step 1 lead save failed (non-blocking):', error);
-    // User is NOT blocked — form continues regardless
   }
 
   setCurrentStep(currentStep + 1);
