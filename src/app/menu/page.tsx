@@ -41,7 +41,7 @@ const menuItems: MenuItem[] = [
     id: "promo-1",
     name: "BHOOKR'S CHICKEN BURRITO BOWL ",
     description: "A bold and hearty bowl packed with tender grilled chicken, seasoned rice, black beans, fresh pico de gallo, creamy guacamole, and a drizzle of our smoky chipotle sauce — all stacked together for a wholesome, high-protein meal that hits every flavor note. Built for the hungry, made for the healthy.",
-    price: 1,
+    price: 169,
     category: "BHOOKR Special",
     calories: "420k",
     image: "/menucard/BHOOKR SPECIALS/Steam Chicken Bowl.avif",
