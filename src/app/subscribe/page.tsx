@@ -155,7 +155,7 @@ export default function SubscriptionPage() {
   const updatedData = user ? { ...data, userId: user.uid } : data;
   updateFormData({ personalInfo: updatedData });
 
-  // Submit partial lead to Google Sheets as soon as personal info is filled
+  // ✅ NEW: Submit partial lead to Google Sheets immediately after Step 1
   try {
     await submitLead({
       name: updatedData.fullName,
@@ -178,8 +178,8 @@ export default function SubscriptionPage() {
     });
     console.log('✅ Partial lead saved from Step 1');
   } catch (error) {
-    console.error('❌ Failed to save partial lead:', error);
-    // Don't block the user — silently fail
+    console.error('❌ Step 1 lead save failed (non-blocking):', error);
+    // User is NOT blocked — form continues regardless
   }
 
   setCurrentStep(currentStep + 1);
