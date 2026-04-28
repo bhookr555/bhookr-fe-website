@@ -39,11 +39,11 @@ const menuItems: MenuItem[] = [
   // Promotional Special
   {
     id: "promo-1",
-    name: "BHOOKR Sample Taste",
-    description: "Try BHOOKR for just ₹1! A small sample portion to experience our authentic flavors, quality ingredients, and healthy cooking style. Perfect for first-time customers.",
+    name: "BHOOKR'S CHICKEN BURRITO BOWL ",
+    description: "A bold and hearty bowl packed with tender grilled chicken, seasoned rice, black beans, fresh pico de gallo, creamy guacamole, and a drizzle of our smoky chipotle sauce — all stacked together for a wholesome, high-protein meal that hits every flavor note. Built for the hungry, made for the healthy.",
     price: 1,
     category: "BHOOKR Special",
-    calories: "100k",
+    calories: "420k",
     image: "/menucard/BHOOKR SPECIALS/Steam Chicken Bowl.avif",
   },
   // Indian
