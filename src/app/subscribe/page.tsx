@@ -151,13 +151,40 @@ export default function SubscriptionPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handlePersonalInfoNext = (data: PersonalInfoFormData) => {
-    // Add userId if user is logged in
-    const updatedData = user ? { ...data, userId: user.uid } : data;
-    updateFormData({ personalInfo: updatedData });
-    setCurrentStep(currentStep + 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+ const handlePersonalInfoNext = async (data: PersonalInfoFormData) => {
+  const updatedData = user ? { ...data, userId: user.uid } : data;
+  updateFormData({ personalInfo: updatedData });
+
+  // Submit partial lead to Google Sheets as soon as personal info is filled
+  try {
+    await submitLead({
+      name: updatedData.fullName,
+      email: updatedData.email,
+      phoneNumber: updatedData.phoneNumber,
+      age: updatedData.age,
+      gender: updatedData.gender || '',
+      height: 0,
+      weight: 0,
+      goal: '',
+      diet: '',
+      foodPreference: '',
+      physicalState: '',
+      subscriptionType: '',
+      plan: '',
+      subscriptionStartDate: new Date().toISOString().split('T')[0],
+      status: 'partial_lead',
+      lastStepCompleted: 1,
+      checkoutVisited: false,
+    });
+    console.log('✅ Partial lead saved from Step 1');
+  } catch (error) {
+    console.error('❌ Failed to save partial lead:', error);
+    // Don't block the user — silently fail
+  }
+
+  setCurrentStep(currentStep + 1);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
 
   const handlePhysicalInfoNext = (data: PhysicalInfoFormData) => {
     updateFormData({ physicalInfo: data });
