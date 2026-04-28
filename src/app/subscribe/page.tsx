@@ -162,7 +162,7 @@ export default function SubscriptionPage() {
       email: updatedData.email,
       phoneNumber: updatedData.phoneNumber,
       age: updatedData.age,
-      gender: updatedData.gender || '',
+      gender: '',
       height: 0,
       weight: 0,
       goal: '',
