@@ -86,13 +86,13 @@ export default function AboutPage() {
                 </div>
               </div>
 
-              {/* Right Column: Full Vertical Image */}
-              <div className="relative w-full h-[500px] lg:h-[700px] xl:h-[800px] rounded-3xl overflow-hidden shadow-2xl">
+              {/* Right Column: Full Vertical Image (transparent frame, no crop) */}
+              <div className="relative w-full h-[500px] lg:h-[700px] xl:h-[800px] bg-transparent">
                 <Image
                   src="/aboutus.avif"
-                  alt="BHOOKR Team Member"
+                  alt="Yashwanth Veeravelly — Founder, BHOOKR"
                   fill
-                  className="object-cover object-center"
+                  className="object-contain object-center"
                   sizes="(max-width: 1024px) 100vw, 50vw"
                   priority
                 />
