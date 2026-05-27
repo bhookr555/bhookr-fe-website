@@ -50,7 +50,7 @@ export default function AboutPage() {
                     <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-[#E31E24] flex items-center justify-center flex-shrink-0 shadow-md">
                       <span className="text-2xl sm:text-3xl md:text-4xl">📖</span>
                     </div>
-                    <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 dark:text-white">Our Story</h2>
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 dark:text-white">My Story</h2>
                   </div>
                   <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-600 dark:text-gray-400 leading-relaxed">
                     Founded in 2022, BHOOKR started with a simple mission: to make
