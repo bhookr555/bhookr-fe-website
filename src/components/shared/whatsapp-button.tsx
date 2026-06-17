@@ -1,9 +1,14 @@
 "use client";
 
 import React from "react";
+import { usePathname } from "next/navigation";
 import "./whatsapp-button.css";
 
 export function WhatsAppButton() {
+  const pathname = usePathname();
+  // Hide on staff-only CRM routes — the WhatsApp button is for public visitors.
+  if (pathname?.startsWith("/crm")) return null;
+
   const phoneNumber = "9542762906";
   const message = "Hii, Enquire from BHOOKR website";
 

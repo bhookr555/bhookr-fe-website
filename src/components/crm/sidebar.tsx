@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -7,34 +8,64 @@ import {
   Users,
   Utensils,
   Package,
+  ShoppingBag,
+  Map,
   MessageCircle,
   Receipt,
   Boxes,
   LineChart,
   Settings,
+  Eye,
 } from "lucide-react";
+import type { CrmRole } from "@/lib/crm/auth";
+import {
+  type CrmModule,
+  type PermissionMatrix,
+  DEFAULT_PERMISSIONS,
+  PERMISSIONS_CHANGED_EVENT,
+  loadPermissions,
+} from "@/lib/crm/permissions";
 
 interface NavItem {
+  moduleId: CrmModule;
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  enabled: boolean;
+  built: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/crm/dashboard", icon: LayoutDashboard, enabled: true },
-  { label: "Leads", href: "/crm/leads", icon: Users, enabled: true },
-  { label: "Customers", href: "/crm/customers", icon: Utensils, enabled: false },
-  { label: "Subscriptions", href: "/crm/subscriptions", icon: Package, enabled: false },
-  { label: "WhatsApp", href: "/crm/whatsapp", icon: MessageCircle, enabled: false },
-  { label: "Billing", href: "/crm/billing", icon: Receipt, enabled: false },
-  { label: "Inventory", href: "/crm/inventory", icon: Boxes, enabled: false },
-  { label: "Analytics", href: "/crm/analytics", icon: LineChart, enabled: false },
-  { label: "Settings", href: "/crm/settings", icon: Settings, enabled: false },
+  { moduleId: "dashboard", label: "Dashboard", href: "/crm/dashboard", icon: LayoutDashboard, built: true },
+  { moduleId: "leads", label: "Leads", href: "/crm/leads", icon: Users, built: true },
+  { moduleId: "customers", label: "Customers", href: "/crm/customers", icon: Utensils, built: true },
+  { moduleId: "subscriptions", label: "Subscriptions", href: "/crm/subscriptions", icon: Package, built: true },
+  { moduleId: "orders", label: "Orders", href: "/crm/orders", icon: ShoppingBag, built: true },
+  { moduleId: "locations", label: "Locations", href: "/crm/locations", icon: Map, built: true },
+  { moduleId: "whatsapp", label: "WhatsApp", href: "/crm/whatsapp", icon: MessageCircle, built: false },
+  { moduleId: "billing", label: "Billing", href: "/crm/billing", icon: Receipt, built: false },
+  { moduleId: "inventory", label: "Inventory", href: "/crm/inventory", icon: Boxes, built: false },
+  { moduleId: "analytics", label: "Analytics", href: "/crm/analytics", icon: LineChart, built: true },
+  { moduleId: "settings", label: "Settings", href: "/crm/settings", icon: Settings, built: true },
 ];
 
-export function CrmSidebar() {
+interface CrmSidebarProps {
+  role: CrmRole;
+}
+
+export function CrmSidebar({ role }: CrmSidebarProps) {
   const pathname = usePathname();
+  const [permissions, setPermissions] = useState<PermissionMatrix>(DEFAULT_PERMISSIONS);
+
+  useEffect(() => {
+    setPermissions(loadPermissions());
+    const handler = () => setPermissions(loadPermissions());
+    window.addEventListener(PERMISSIONS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PERMISSIONS_CHANGED_EVENT, handler);
+  }, []);
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => permissions[role][item.moduleId] !== "none"
+  );
 
   return (
     <aside className="hidden w-60 shrink-0 border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 md:flex md:flex-col">
@@ -49,8 +80,10 @@ export function CrmSidebar() {
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-0.5">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const active = pathname === item.href;
+            const level = permissions[role][item.moduleId];
+            const isReadOnly = level === "read";
             const Icon = item.icon;
 
             const baseClasses =
@@ -62,15 +95,20 @@ export function CrmSidebar() {
                   <Icon className="h-4 w-4 shrink-0" />
                   <span>{item.label}</span>
                 </span>
-                {!item.enabled && (
-                  <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                    Soon
-                  </span>
-                )}
+                <span className="flex items-center gap-1.5">
+                  {isReadOnly && item.built && (
+                    <Eye className="h-3.5 w-3.5 text-amber-500" />
+                  )}
+                  {!item.built && (
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      Soon
+                    </span>
+                  )}
+                </span>
               </>
             );
 
-            if (!item.enabled) {
+            if (!item.built) {
               return (
                 <li key={item.href}>
                   <div
@@ -93,6 +131,7 @@ export function CrmSidebar() {
                       ? "bg-red-50 text-[#E31E24] dark:bg-red-950/40 dark:text-red-300"
                       : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                   }`}
+                  title={isReadOnly ? "Read-only access" : undefined}
                 >
                   {content}
                 </Link>
