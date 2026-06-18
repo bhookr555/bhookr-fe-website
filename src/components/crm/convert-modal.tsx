@@ -5,7 +5,7 @@ import { IndianRupee, X } from "lucide-react";
 import {
   PAYMENT_METHOD_OPTIONS,
   PLAN_TYPE_OPTIONS,
-  setPipelineStatus,
+  setPipelineStatusApi,
 } from "@/lib/crm/pipeline";
 import type { CrmRole } from "@/lib/crm/auth";
 
@@ -30,20 +30,22 @@ export function ConvertModal({
   const [notes, setNotes] = useState("");
   const [confirming, setConfirming] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!confirming) {
       setConfirming(true);
       return;
     }
     if (!role) return;
-    setPipelineStatus(email, "converted", role, {
+    const success = await setPipelineStatusApi(email, "converted", role, {
       planType,
       amount: amount ? Number(amount) : undefined,
       paymentMethod,
       notes: notes.trim() || undefined,
     });
-    onSuccess?.();
+    if (success) {
+      onSuccess?.();
+    }
     onClose();
   };
 
@@ -61,7 +63,7 @@ export function ConvertModal({
               Mark as converted
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              {name || email} · browser-local only
+              {name || email} · database sync
             </p>
           </div>
           <button
@@ -75,8 +77,7 @@ export function ConvertModal({
 
         <form onSubmit={handleSubmit} className="space-y-4 p-5">
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-            ⚠️ This will NOT write to the Subscriptions sheet. The mark lives
-            only in your browser.
+            ⚠️ This will NOT write to the Subscriptions sheet. The mark is saved in the central CRM database.
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -152,8 +153,7 @@ export function ConvertModal({
 
           {confirming && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-              Confirm: mark <strong>{email}</strong> as converted? This is
-              browser-local only and can be removed later.
+              Confirm: mark <strong>{email}</strong> as converted in the central database? This can be removed later.
             </div>
           )}
 

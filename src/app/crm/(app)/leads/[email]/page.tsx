@@ -32,12 +32,12 @@ import {
   PIPELINE_CHANGED_EVENT,
   PIPELINE_STATUSES,
   effectiveStatus,
-  getPipelineEntry,
   getStatusMeta,
-  loadPipeline,
-  removePipelineEntry,
-  setPipelineStatus,
+  fetchPipelineApi,
+  setPipelineStatusApi,
+  removePipelineEntryApi,
   type PipelineEntry,
+  type PipelineMap,
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
 import { ConvertModal } from "@/components/crm/convert-modal";
@@ -105,9 +105,10 @@ export default function LeadDetailPage() {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
-      const [leadsRes, subsRes] = await Promise.all([
+      const [leadsRes, subsRes, pipelineData] = await Promise.all([
         fetch("/api/crm/leads", { cache: "no-store" }),
         fetch("/api/crm/subscriptions", { cache: "no-store" }),
+        fetchPipelineApi(),
       ]);
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
       const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
@@ -124,6 +125,7 @@ export default function LeadDetailPage() {
 
       setLead(foundLead);
       setMatchedSubs(foundSubs);
+      setPipelineEntry(pipelineData[email] ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load lead");
     } finally {
@@ -134,10 +136,11 @@ export default function LeadDetailPage() {
 
   useEffect(() => {
     setRole(getCurrentRole());
-    setPipelineEntry(getPipelineEntry(email));
     fetchAll();
 
-    const handler = () => setPipelineEntry(getPipelineEntry(email));
+    const handler = () => {
+      fetchPipelineApi().then((map) => setPipelineEntry(map[email] ?? null));
+    };
     window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
     return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
   }, [email, fetchAll]);
@@ -161,19 +164,22 @@ export default function LeadDetailPage() {
     [email, verifiedSub]
   );
 
-  const eff = useMemo(
-    () => effectiveStatus(email, loadPipeline(), verifiedEmailSet),
-    [email, verifiedEmailSet, pipelineEntry]
-  );
+  const eff = useMemo(() => {
+    const localMap: PipelineMap = pipelineEntry ? { [email]: pipelineEntry } : {};
+    return effectiveStatus(email, localMap, verifiedEmailSet);
+  }, [email, verifiedEmailSet, pipelineEntry]);
   const effMeta = getStatusMeta(eff.status);
 
-  const handleStatusChange = (newStatus: PipelineStatus) => {
+  const handleStatusChange = async (newStatus: PipelineStatus) => {
     if (!role) return;
     if (newStatus === "converted") {
       setConvertOpen(true);
       return;
     }
-    setPipelineStatus(email, newStatus, role);
+    const success = await setPipelineStatusApi(email, newStatus, role);
+    if (!success) {
+      setError("Failed to update status in the database");
+    }
   };
 
   if (loading) {
@@ -307,12 +313,11 @@ export default function LeadDetailPage() {
             <Sparkles className="mt-0.5 h-6 w-6 shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="flex-1">
               <h3 className="text-base font-bold text-amber-900 dark:text-amber-200">
-                Marked converted manually (browser-local only)
+                Marked converted manually (database record)
               </h3>
               <p className="mt-1 text-sm text-amber-800 dark:text-amber-300/90">
-                This mark lives only in your browser&apos;s storage. It does not
-                exist in the Subscriptions sheet and other staff won&apos;t see
-                it. Use the website&apos;s payment flow for a real conversion.
+                This mark is saved in your central CRM database. It does not
+                exist in the Subscriptions sheet yet. Use the website&apos;s payment flow for a real payment conversion.
               </p>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Stat label="Plan" value={humanize(pipelineEntry.planType ?? "") || "—"} />
@@ -333,14 +338,17 @@ export default function LeadDetailPage() {
               )}
               {isAdmin && (
                 <button
-                  onClick={() => {
-                    if (confirm("Remove the local conversion mark for this lead?")) {
-                      removePipelineEntry(email);
+                  onClick={async () => {
+                    if (confirm("Remove the conversion mark for this lead?")) {
+                      const success = await removePipelineEntryApi(email);
+                      if (!success) {
+                        setError("Failed to remove conversion mark from database");
+                      }
                     }
                   }}
                   className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300"
                 >
-                  <Trash2 className="h-3.5 w-3.5" /> Remove local mark
+                  <Trash2 className="h-3.5 w-3.5" /> Remove mark
                 </button>
               )}
             </div>
@@ -418,8 +426,7 @@ export default function LeadDetailPage() {
 
       <p className="text-xs text-gray-400">
         Read-only view of the sheet data. The Google Sheets are not modified by
-        anything on this page. Pipeline status + conversion marks live only in
-        your browser.
+        anything on this page. Pipeline status + conversion marks are saved in the central CRM database.
       </p>
 
       {convertOpen && (

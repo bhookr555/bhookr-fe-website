@@ -24,8 +24,8 @@ import {
   PIPELINE_STATUSES,
   effectiveStatus,
   getStatusMeta,
-  loadPipeline,
-  setPipelineStatus,
+  fetchPipelineApi,
+  setPipelineStatusApi,
   type PipelineMap,
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
@@ -88,9 +88,10 @@ export function MasterPipeline() {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
-      const [leadsRes, subsRes] = await Promise.all([
+      const [leadsRes, subsRes, pipelineData] = await Promise.all([
         fetch("/api/crm/leads", { cache: "no-store" }),
         fetch("/api/crm/subscriptions", { cache: "no-store" }),
+        fetchPipelineApi(),
       ]);
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
       const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
@@ -99,6 +100,7 @@ export function MasterPipeline() {
       }
       setLeads(Array.isArray(leadsData.rows) ? leadsData.rows : []);
       setSubs(subsData.success && Array.isArray(subsData.rows) ? subsData.rows : []);
+      setPipeline(pipelineData);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load leads");
@@ -111,10 +113,11 @@ export function MasterPipeline() {
   useEffect(() => {
     setRole(getCurrentRole());
     fetchAll();
-    setPipeline(loadPipeline());
     setTodayStr(localDateString(new Date()));
 
-    const handler = () => setPipeline(loadPipeline());
+    const handler = () => {
+      fetchPipelineApi().then(setPipeline);
+    };
     window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
     return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
   }, [fetchAll]);
@@ -205,18 +208,22 @@ export function MasterPipeline() {
     return sorted;
   }, [dateFilteredLeads, filter, search, sortBy]);
 
-  const handleStatusChange = (email: string, name: string, newStatus: PipelineStatus) => {
+  const handleStatusChange = async (email: string, name: string, newStatus: PipelineStatus) => {
     if (!role) return;
     if (newStatus === "converted") {
       // Use the rich modal for converted so we can capture plan / amount / method
       setConvertingLead({ email, name });
       return;
     }
-    setPipelineStatus(email, newStatus, role);
-    const meta = getStatusMeta(newStatus);
-    toast.success(`${meta.icon} Moved to ${meta.label}`, {
-      description: name || email,
-    });
+    const success = await setPipelineStatusApi(email, newStatus, role);
+    if (success) {
+      const meta = getStatusMeta(newStatus);
+      toast.success(`${meta.icon} Moved to ${meta.label}`, {
+        description: name || email,
+      });
+    } else {
+      toast.error("Failed to update status in the database");
+    }
   };
 
   const dateModeLabel: Record<DateFilter, string> = {
@@ -249,7 +256,7 @@ export function MasterPipeline() {
             <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
               {dateModeLabel[dateMode]}
               {dateMode === "specific" && specificDate ? ` · ${specificDate}` : ""}
-              {" · "}status changes save locally · last updated{" "}
+              {" · "}status changes save to database · last updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
                 minute: "2-digit",

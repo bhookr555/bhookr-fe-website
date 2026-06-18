@@ -25,7 +25,7 @@ import {
   PIPELINE_STATUSES,
   effectiveStatus,
   getStatusMeta,
-  loadPipeline,
+  fetchPipelineApi,
   type PipelineMap,
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
@@ -140,9 +140,10 @@ export default function CrmLeadsPage() {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
-      const [leadsRes, subsRes] = await Promise.all([
+      const [leadsRes, subsRes, pipelineData] = await Promise.all([
         fetch("/api/crm/leads", { cache: "no-store" }),
         fetch("/api/crm/subscriptions", { cache: "no-store" }),
+        fetchPipelineApi(),
       ]);
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
       const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
@@ -151,6 +152,7 @@ export default function CrmLeadsPage() {
       }
       setRows(Array.isArray(leadsData.rows) ? leadsData.rows : []);
       setSubs(subsData.success && Array.isArray(subsData.rows) ? subsData.rows : []);
+      setPipeline(pipelineData);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load leads");
@@ -162,8 +164,9 @@ export default function CrmLeadsPage() {
 
   useEffect(() => {
     fetchAll();
-    setPipeline(loadPipeline());
-    const handler = () => setPipeline(loadPipeline());
+    const handler = () => {
+      fetchPipelineApi().then(setPipeline);
+    };
     window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
     return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
   }, [fetchAll]);

@@ -23,7 +23,7 @@ import {
   PIPELINE_CHANGED_EVENT,
   PIPELINE_STATUSES,
   effectiveStatus,
-  loadPipeline,
+  fetchPipelineApi,
   type PipelineMap,
 } from "@/lib/crm/pipeline";
 
@@ -120,10 +120,11 @@ export default function CrmAnalyticsPage() {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
-      const [leadsRes, subsRes, ordersRes] = await Promise.all([
+      const [leadsRes, subsRes, ordersRes, pipelineData] = await Promise.all([
         fetch("/api/crm/leads", { cache: "no-store" }),
         fetch("/api/crm/subscriptions", { cache: "no-store" }),
         fetch("/api/crm/orders", { cache: "no-store" }),
+        fetchPipelineApi(),
       ]);
 
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
@@ -133,6 +134,7 @@ export default function CrmAnalyticsPage() {
       setLeads(leadsData.success ? leadsData.rows : []);
       setSubs(subsData.success ? subsData.rows : []);
       setOrders(ordersData.success ? ordersData.rows : []);
+      setPipeline(pipelineData);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load analytics");
@@ -144,10 +146,11 @@ export default function CrmAnalyticsPage() {
 
   useEffect(() => {
     fetchAll();
-    setPipeline(loadPipeline());
     setTodayStr(localDateString(new Date()));
 
-    const handler = () => setPipeline(loadPipeline());
+    const handler = () => {
+      fetchPipelineApi().then(setPipeline);
+    };
     window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
     return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
   }, [fetchAll]);

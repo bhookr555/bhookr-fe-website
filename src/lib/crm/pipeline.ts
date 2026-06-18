@@ -258,3 +258,65 @@ export function effectiveStatus(
   if (entry) return { status: entry.status, source: "local" };
   return { status: "new", source: "default" };
 }
+
+export async function fetchPipelineApi(): Promise<PipelineMap> {
+  try {
+    const res = await fetch("/api/crm/pipeline", { cache: "no-store" });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    return data.success && data.pipeline ? data.pipeline : {};
+  } catch (err) {
+    console.error("Failed to fetch pipeline from API:", err);
+    return {};
+  }
+}
+
+export async function setPipelineStatusApi(
+  email: string,
+  status: PipelineStatus,
+  role: CrmRole,
+  extras?: {
+    notes?: string;
+    planType?: string;
+    amount?: number;
+    paymentMethod?: string;
+  }
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/crm/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, status, role, extras }),
+    });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (data.success) {
+      window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Failed to set pipeline status via API:", err);
+    return false;
+  }
+}
+
+export async function removePipelineEntryApi(email: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/crm/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", email }),
+    });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (data.success) {
+      window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Failed to delete pipeline entry via API:", err);
+    return false;
+  }
+}
