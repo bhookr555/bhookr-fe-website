@@ -12,7 +12,7 @@ import {
   setPersistence,
   browserLocalPersistence
 } from 'firebase/auth';
-import { auth, googleProvider } from '@/lib/firebase/config';
+import { auth, googleProvider, isFirebaseConfigured } from '@/lib/firebase/config';
 import { userRepository } from '@/lib/repositories';
 
 interface AuthContextType {
@@ -60,6 +60,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    // If Firebase isn't configured (e.g., local dev without .env.local),
+    // stay in a permanent "signed-out" state instead of crashing.
+    if (!isFirebaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
     // Set persistence when component mounts (client-side only)
     if (typeof window !== 'undefined') {
       setPersistence(auth, browserLocalPersistence).catch((error) => {
