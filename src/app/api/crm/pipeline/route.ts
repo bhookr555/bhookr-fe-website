@@ -16,8 +16,8 @@ function normaliseEmail(email: string): string {
 export async function GET() {
   if (!adminDb) {
     return NextResponse.json(
-      { success: false, error: "Firebase Admin not initialized" },
-      { status: 500 }
+      { success: false, error: "Firebase Admin not initialized (Missing environment variables)" },
+      { status: 200 }
     );
   }
 
@@ -53,8 +53,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!adminDb) {
     return NextResponse.json(
-      { success: false, error: "Firebase Admin not initialized" },
-      { status: 500 }
+      { success: false, error: "Firebase Admin not initialized (Missing environment variables)" },
+      { status: 200 }
     );
   }
 
