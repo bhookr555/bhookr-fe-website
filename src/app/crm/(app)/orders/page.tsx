@@ -105,11 +105,12 @@ export default function CrmOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async (silent = false) => {
+  const fetchData = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
-      const res = await fetch("/api/crm/orders", { cache: "no-store" });
+      const url = force ? "/api/crm/orders?refresh=true" : "/api/crm/orders";
+      const res = await fetch(url, { cache: "no-store" });
       const data = (await res.json()) as OrdersApiResponse;
       if (!res.ok || !data.success) {
         throw new Error(data.error || `Request failed: ${res.status}`);
@@ -204,7 +205,7 @@ export default function CrmOrdersPage() {
           )}
         </div>
         <button
-          onClick={() => fetchData()}
+          onClick={() => fetchData(false, true)}
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >

@@ -1,10 +1,26 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-// Always fetch fresh — the CRM is supposed to show the latest sheet state.
+// Always force dynamic so Vercel executes the handler on requests
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+let cachedLeads: any = null;
+let lastFetched: number = 0;
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const forceRefresh = searchParams.get("refresh") === "true";
+
+  const now = Date.now();
+  if (!forceRefresh && cachedLeads && now - lastFetched < CACHE_DURATION_MS) {
+    return NextResponse.json(cachedLeads, {
+      headers: {
+        "X-Cache": "HIT",
+      },
+    });
+  }
+
   const url = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
 
   if (!url) {
@@ -23,7 +39,6 @@ export async function GET() {
     const upstream = await fetch(`${url}?action=list`, {
       method: "GET",
       cache: "no-store",
-      // Apps Script can be slow; give it room.
       signal: AbortSignal.timeout(20_000),
       redirect: "follow",
     });
@@ -42,9 +57,14 @@ export async function GET() {
 
     const data = await upstream.json();
 
+    // Update the cache
+    cachedLeads = data;
+    lastFetched = now;
+
     return NextResponse.json(data, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
+        "X-Cache": "MISS",
       },
     });
   } catch (err) {

@@ -84,13 +84,16 @@ export function MasterPipeline() {
     name: string;
   } | null>(null);
 
-  const fetchAll = useCallback(async (silent = false) => {
+  const fetchAll = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
+      const leadsUrl = force ? "/api/crm/leads?refresh=true" : "/api/crm/leads";
+      const subsUrl = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
+
       const [leadsRes, subsRes, pipelineData] = await Promise.all([
-        fetch("/api/crm/leads", { cache: "no-store" }),
-        fetch("/api/crm/subscriptions", { cache: "no-store" }),
+        fetch(leadsUrl, { cache: "no-store" }),
+        fetch(subsUrl, { cache: "no-store" }),
         fetchPipelineApi(),
       ]);
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
@@ -265,7 +268,7 @@ export function MasterPipeline() {
           )}
         </div>
         <button
-          onClick={() => fetchAll()}
+          onClick={() => fetchAll(false, true)}
           disabled={refreshing}
           className="inline-flex items-center gap-2 self-start rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
