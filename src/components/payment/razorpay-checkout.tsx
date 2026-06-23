@@ -20,6 +20,7 @@ import { PaymentLoader } from "@/components/shared/payment-loader";
 import { useAuth } from "@/contexts/AuthContext";
 import logger from "@/lib/logger";
 import { Shield, Lock } from "lucide-react";
+import * as fpixel from "@/lib/fpixel";
 
 // Razorpay types
 declare global {
@@ -334,6 +335,17 @@ export function RazorpayCheckout({
         setLoading(false);
         toast.error(response.error.description || "Payment failed");
         onError?.(response.error.description);
+      });
+
+      // Track AddPaymentInfo Pixel Event
+      fpixel.event("AddPaymentInfo", {
+        value: amount,
+        currency: "INR",
+        content_type: "product",
+        contents: items.map((item) => ({
+          id: item.planId,
+          quantity: item.quantity,
+        })),
       });
 
       razorpay.open();

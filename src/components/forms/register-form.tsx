@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { PaymentLoader } from "@/components/shared/payment-loader";
 import { useAuth } from "@/contexts/AuthContext";
+import * as fpixel from "@/lib/fpixel";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export function RegisterForm() {
     try {
       await signInWithGoogle();
       toast.success("Account created successfully!");
+      fpixel.event("CompleteRegistration");
       router.push(callbackUrl);
       router.refresh();
     } catch (error: unknown) {

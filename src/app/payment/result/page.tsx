@@ -42,6 +42,7 @@ import { motion } from "framer-motion";
 import { format } from "date-fns";
 import logger from "@/lib/logger";
 import { browserDevLogger } from "@/lib/dev-logger";
+import * as fpixel from "@/lib/fpixel";
 import Confetti from "react-confetti";
 import { printInvoice } from "@/lib/invoice";
 import type { InvoiceData } from "@/types/subscription";
@@ -357,6 +358,22 @@ function PaymentResultContent() {
       if (data.status === 'PAID') {
         clearCart();
         setShowConfetti(true);
+
+        // Track Purchase event once per orderId session
+        const trackedPurchases = JSON.parse(sessionStorage.getItem("trackedPurchases") || "[]");
+        if (!trackedPurchases.includes(data.orderId)) {
+          fpixel.event("Purchase", {
+            value: data.amount,
+            currency: "INR",
+            content_type: data.orderType === "subscription" ? "subscription" : "product",
+            contents: data.items?.map((item: OrderItem) => ({
+              id: item.planId,
+              quantity: item.quantity,
+            })) || [],
+          });
+          trackedPurchases.push(data.orderId);
+          sessionStorage.setItem("trackedPurchases", JSON.stringify(trackedPurchases));
+        }
         
         // Submit subscription to Google Sheets (non-blocking)
         submitSubscriptionToSheet(data).catch(err => {

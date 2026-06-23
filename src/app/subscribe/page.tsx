@@ -30,6 +30,7 @@ import { printInvoice } from "@/lib/invoice";
 import { convertToLeadData } from "@/lib/validators/subscription";
 import { toast } from "sonner";
 import { Shield, Lock } from "lucide-react";
+import * as fpixel from "@/lib/fpixel";
 import type { InvoiceData } from "@/types/subscription";
 import type {
   PersonalInfoFormData,
@@ -718,6 +719,22 @@ export default function SubscriptionPage() {
 
             await verifyResponse.json();
             console.log('✓ Payment verified successfully');
+
+            // Track StartTrial or Subscribe based on duration
+            const duration = formData.activityAndDuration?.duration;
+            if (duration === "7_days") {
+              fpixel.event("StartTrial", {
+                value: totalAmount,
+                currency: "INR",
+                predicted_ltv: totalAmount,
+              });
+            } else {
+              fpixel.event("Subscribe", {
+                value: totalAmount,
+                currency: "INR",
+                predicted_ltv: totalAmount,
+              });
+            }
 
             // Clear form data after successful subscription
             resetForm();

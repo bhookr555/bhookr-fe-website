@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cart";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +8,7 @@ import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
 import { Container } from "@/components/layouts/container";
 import { CheckoutStepper } from "@/components/checkout/checkout-stepper";
+import * as fpixel from "@/lib/fpixel";
 import { Button } from "@/components/ui/button";
 import { LoadingOverlay } from "@/components/shared/loading-overlay";
 import { motion, AnimatePresence } from "framer-motion";
@@ -29,6 +30,7 @@ export default function CheckoutPage() {
   const [deliveryData, setDeliveryData] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasTrackedCheckout = useRef(false);
 
   // Check authentication only once after loading completes
   useEffect(() => {
@@ -76,6 +78,22 @@ export default function CheckoutPage() {
       setLocalStorageItem('checkoutStep', currentStep);
     }
   }, [currentStep]);
+
+  // Track InitiateCheckout once when checkout page mounts with items in cart
+  useEffect(() => {
+    if (authChecked && user && items.length > 0 && !hasTrackedCheckout.current) {
+      hasTrackedCheckout.current = true;
+      fpixel.event("InitiateCheckout", {
+        value: items.reduce((sum, item) => sum + item.plan.price * item.quantity, 0),
+        currency: "INR",
+        content_type: "product",
+        contents: items.map((item) => ({
+          id: item.planId,
+          quantity: item.quantity,
+        })),
+      });
+    }
+  }, [authChecked, user, items]);
 
   const handleNextStep = (data?: any) => {
     try {
