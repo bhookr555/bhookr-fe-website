@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCrmStaff } from "@/lib/api-auth";
 
 // Always force dynamic so Vercel executes the handler on requests
 export const dynamic = "force-dynamic";
@@ -9,6 +10,14 @@ let lastFetched: number = 0;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function GET(req: NextRequest) {
+  const authStatus = await authorizeCrmStaff(req);
+  if (!authStatus.authorized) {
+    return NextResponse.json(
+      { success: false, error: authStatus.error || "Forbidden", rows: [], total: 0 },
+      { status: 403 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const forceRefresh = searchParams.get("refresh") === "true";
 

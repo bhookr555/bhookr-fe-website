@@ -27,7 +27,7 @@ import {
   type PipelineMap,
 } from "@/lib/crm/pipeline";
 
-type DateFilter = "today" | "all" | "specific";
+type DateFilter = "today" | "all" | "range";
 
 interface KpiCardProps {
   label: string;
@@ -113,7 +113,8 @@ export default function CrmAnalyticsPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [dateMode, setDateMode] = useState<DateFilter>("all");
-  const [specificDate, setSpecificDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [todayStr, setTodayStr] = useState<string>("");
 
   const fetchAll = useCallback(async (silent = false, force = false) => {
@@ -165,14 +166,18 @@ export default function CrmAnalyticsPage() {
     const key = localDateString(iso);
     if (!key) return false;
     if (dateMode === "today") return key === todayStr;
-    if (dateMode === "specific") return specificDate ? key === specificDate : true;
+    if (dateMode === "range") {
+      if (startDate && key < startDate) return false;
+      if (endDate && key > endDate) return false;
+      return true;
+    }
     return true;
   }
 
   // Date-filtered slices
-  const filteredLeads = useMemo(() => leads.filter((l) => inDateRange(l.timestamp)), [leads, dateMode, todayStr, specificDate]);
-  const filteredSubs = useMemo(() => subs.filter((s) => inDateRange(s.timestamp)), [subs, dateMode, todayStr, specificDate]);
-  const filteredOrders = useMemo(() => orders.filter((o) => inDateRange(o.timestamp)), [orders, dateMode, todayStr, specificDate]);
+  const filteredLeads = useMemo(() => leads.filter((l) => inDateRange(l.timestamp)), [leads, dateMode, todayStr, startDate, endDate]);
+  const filteredSubs = useMemo(() => subs.filter((s) => inDateRange(s.timestamp)), [subs, dateMode, todayStr, startDate, endDate]);
+  const filteredOrders = useMemo(() => orders.filter((o) => inDateRange(o.timestamp)), [orders, dateMode, todayStr, startDate, endDate]);
 
   const verifiedEmails = useMemo(() => {
     const set = new Set<string>();
@@ -291,16 +296,16 @@ export default function CrmAnalyticsPage() {
   const dateModeLabel: Record<DateFilter, string> = {
     today: "Today",
     all: "All time",
-    specific: "Specific date",
+    range: "Date range",
   };
 
   const dateSubtitle =
     dateMode === "today"
       ? `Today (${todayStr})`
-      : dateMode === "specific"
-      ? specificDate
-        ? `${specificDate}`
-        : "Pick a date above"
+      : dateMode === "range"
+      ? startDate || endDate
+        ? `${startDate || "any"} to ${endDate || "any"}`
+        : "Pick a date range"
       : "All time";
 
   return (
@@ -332,25 +337,41 @@ export default function CrmAnalyticsPage() {
           >
             <option value="today">📅 Today</option>
             <option value="all">📅 All time</option>
-            <option value="specific">📅 Specific date…</option>
+            <option value="range">📅 Date range…</option>
           </select>
-          {dateMode === "specific" && (
-            <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-900">
-              <Calendar className="h-4 w-4 text-gray-400" />
-              <input
-                type="date"
-                value={specificDate}
-                max={todayStr}
-                onChange={(e) => setSpecificDate(e.target.value)}
-                className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
-              />
-              {specificDate && (
+          {dateMode === "range" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+                <span className="text-xs text-gray-400 font-medium">From:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  max={endDate || todayStr}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+                <span className="text-xs text-gray-400 font-medium">To:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  max={todayStr}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+                />
+              </div>
+              {(startDate || endDate) && (
                 <button
                   type="button"
-                  onClick={() => setSpecificDate("")}
-                  className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800"
                 >
-                  clear
+                  Clear
                 </button>
               )}
             </div>

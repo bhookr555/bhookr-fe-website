@@ -12,8 +12,8 @@ export function CrmTopbar({ role }: CrmTopbarProps) {
   const router = useRouter();
   const meta = getRoleMeta(role);
 
-  const handleLogout = () => {
-    logoutCrm();
+  const handleLogout = async () => {
+    await logoutCrm();
     router.replace("/crm");
   };
 

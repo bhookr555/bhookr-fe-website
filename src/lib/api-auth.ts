@@ -351,3 +351,28 @@ export function withRole(
   };
 }
 
+/**
+ * Verify CRM Staff access.
+ * If Firebase Admin is not initialized (Local Dev Bypass), this returns success.
+ * If initialized, it checks if the user is authenticated and has a valid CRM role.
+ */
+export async function authorizeCrmStaff(request: NextRequest): Promise<{ authorized: boolean; error?: string; role?: string }> {
+  // If Firebase Admin is not configured, we are in Local Dev Bypass mode
+  if (!adminAuth) {
+    return { authorized: true, role: "admin" }; 
+  }
+
+  try {
+    const user = await requireRole(request, ["admin", "auditor", "manager", "telecaller"]);
+    const { userRepository } = await import("@/lib/repositories");
+    const userDoc = await userRepository.findById(user.uid);
+    return { authorized: true, role: userDoc?.role };
+  } catch (error: any) {
+    return { 
+      authorized: false, 
+      error: error.message || "Unauthorized access" 
+    };
+  }
+}
+
+

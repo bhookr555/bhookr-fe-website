@@ -58,10 +58,30 @@ export function getCurrentRole(): CrmRole | null {
   return CRM_ROLES.some((r) => r.value === stored) ? (stored as CrmRole) : null;
 }
 
-export function logoutCrm(): void {
+export async function logoutCrm(): Promise<void> {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(STORAGE_KEY);
+  
+  // Clear cookies client-side immediately
   document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+  document.cookie = `firebase-id-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+
+  try {
+    // Clear cookies server-side
+    await fetch("/api/auth/clear-session", { method: "POST" });
+  } catch (err) {
+    console.error("Failed to clear server session:", err);
+  }
+
+  try {
+    const { auth } = await import("@/lib/firebase/config");
+    const { signOut } = await import("firebase/auth");
+    if (auth) {
+      await signOut(auth);
+    }
+  } catch (err) {
+    console.error("Failed to sign out from Firebase client:", err);
+  }
 }
 
 export function getRoleMeta(role: CrmRole): CrmRoleMeta | undefined {

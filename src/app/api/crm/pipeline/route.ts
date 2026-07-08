@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import type { PipelineEntry, PipelineStatus } from "@/lib/crm/pipeline";
 import type { CrmRole } from "@/lib/crm/auth";
+import { authorizeCrmStaff } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,15 @@ function normaliseEmail(email: string): string {
  * GET /api/crm/pipeline
  * Fetch all status mappings from Firestore
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authStatus = await authorizeCrmStaff(req);
+  if (!authStatus.authorized) {
+    return NextResponse.json(
+      { success: false, error: authStatus.error || "Forbidden" },
+      { status: 403 }
+    );
+  }
+
   if (!adminDb) {
     return NextResponse.json(
       { success: false, error: "Firebase Admin not initialized (Missing environment variables)" },
@@ -51,6 +60,14 @@ export async function GET() {
  * Upsert or delete a status mapping
  */
 export async function POST(req: NextRequest) {
+  const authStatus = await authorizeCrmStaff(req);
+  if (!authStatus.authorized) {
+    return NextResponse.json(
+      { success: false, error: authStatus.error || "Forbidden" },
+      { status: 403 }
+    );
+  }
+
   if (!adminDb) {
     return NextResponse.json(
       { success: false, error: "Firebase Admin not initialized (Missing environment variables)" },

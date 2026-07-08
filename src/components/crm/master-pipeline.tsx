@@ -42,7 +42,7 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "name", label: "Name A–Z" },
 ];
 
-type DateFilter = "today" | "all" | "specific";
+type DateFilter = "today" | "all" | "range";
 
 function tsValue(v: string | number | null | undefined): number {
   if (v === null || v === undefined || v === "") return 0;
@@ -76,7 +76,8 @@ export function MasterPipeline() {
   const [sortBy, setSortBy] = useState<SortBy>("newest");
 
   const [dateMode, setDateMode] = useState<DateFilter>("today");
-  const [specificDate, setSpecificDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [todayStr, setTodayStr] = useState<string>("");
 
   const [convertingLead, setConvertingLead] = useState<{
@@ -163,12 +164,16 @@ export function MasterPipeline() {
       if (!todayStr) return annotatedLeads;
       return annotatedLeads.filter((a) => a.dateKey === todayStr);
     }
-    if (dateMode === "specific") {
-      if (!specificDate) return annotatedLeads;
-      return annotatedLeads.filter((a) => a.dateKey === specificDate);
+    if (dateMode === "range") {
+      return annotatedLeads.filter((a) => {
+        if (!a.dateKey) return false;
+        if (startDate && a.dateKey < startDate) return false;
+        if (endDate && a.dateKey > endDate) return false;
+        return true;
+      });
     }
     return annotatedLeads;
-  }, [annotatedLeads, dateMode, todayStr, specificDate]);
+  }, [annotatedLeads, dateMode, todayStr, startDate, endDate]);
 
   const counts = useMemo(() => {
     const map: Record<PipelineStatus | "all", number> = {
@@ -232,14 +237,14 @@ export function MasterPipeline() {
   const dateModeLabel: Record<DateFilter, string> = {
     today: "Today",
     all: "All time",
-    specific: "Specific date",
+    range: "Date range",
   };
 
   const dateEmptyReason =
     dateMode === "today" && dateFilteredLeads.length === 0
-      ? `No leads captured today (${todayStr}). Try "All time" or pick a date.`
-      : dateMode === "specific" && specificDate && dateFilteredLeads.length === 0
-      ? `No leads on ${specificDate}.`
+      ? `No leads captured today (${todayStr}). Try "All time" or pick a date range.`
+      : dateMode === "range" && (startDate || endDate) && dateFilteredLeads.length === 0
+      ? `No leads between ${startDate || "any"} and ${endDate || "any"}.`
       : null;
 
   return (
@@ -258,7 +263,7 @@ export function MasterPipeline() {
           {!loading && (
             <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
               {dateModeLabel[dateMode]}
-              {dateMode === "specific" && specificDate ? ` · ${specificDate}` : ""}
+              {dateMode === "range" && (startDate || endDate) ? ` · ${startDate || "any"} to ${endDate || "any"}` : ""}
               {" · "}status changes save to database · last updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
@@ -326,26 +331,42 @@ export function MasterPipeline() {
         >
           <option value="today">📅 Today&apos;s leads</option>
           <option value="all">📅 All time</option>
-          <option value="specific">📅 Pick specific date…</option>
+          <option value="range">📅 Date range…</option>
         </select>
 
-        {dateMode === "specific" && (
-          <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-950">
-            <Calendar className="h-4 w-4 text-gray-400" />
-            <input
-              type="date"
-              value={specificDate}
-              max={todayStr}
-              onChange={(e) => setSpecificDate(e.target.value)}
-              className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
-            />
-            {specificDate && (
+        {dateMode === "range" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-950">
+              <span className="text-xs text-gray-400 font-medium">From:</span>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate || todayStr}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-950">
+              <span className="text-xs text-gray-400 font-medium">To:</span>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate}
+                max={todayStr}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+              />
+            </div>
+            {(startDate || endDate) && (
               <button
                 type="button"
-                onClick={() => setSpecificDate("")}
-                className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800"
               >
-                clear
+                Clear
               </button>
             )}
           </div>

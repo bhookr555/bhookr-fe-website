@@ -27,7 +27,7 @@ const LocationsMap = dynamic(() => import("@/components/crm/locations-map"), {
   ),
 });
 
-type DateFilter = "today" | "all" | "specific";
+type DateFilter = "today" | "all" | "range";
 
 function localDateString(input: Date | string | number | null | undefined): string {
   if (input === null || input === undefined || input === "") return "";
@@ -48,7 +48,8 @@ export default function CrmLocationsPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [dateMode, setDateMode] = useState<DateFilter>("all");
-  const [specificDate, setSpecificDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [todayStr, setTodayStr] = useState<string>("");
 
   const [highlightedPincode, setHighlightedPincode] = useState<string | null>(null);
@@ -89,12 +90,17 @@ export default function CrmLocationsPage() {
       if (!todayStr) return orders;
       return orders.filter((o) => localDateString(o.timestamp) === todayStr);
     }
-    if (dateMode === "specific") {
-      if (!specificDate) return orders;
-      return orders.filter((o) => localDateString(o.timestamp) === specificDate);
+    if (dateMode === "range") {
+      return orders.filter((o) => {
+        const key = localDateString(o.timestamp);
+        if (!key) return false;
+        if (startDate && key < startDate) return false;
+        if (endDate && key > endDate) return false;
+        return true;
+      });
     }
     return orders;
-  }, [orders, dateMode, todayStr, specificDate]);
+  }, [orders, dateMode, todayStr, startDate, endDate]);
 
   const clusters: LocationCluster[] = useMemo(
     () => aggregateLocations(filteredOrders, subs),
@@ -113,7 +119,7 @@ export default function CrmLocationsPage() {
   const dateModeLabel: Record<DateFilter, string> = {
     today: "Today",
     all: "All time",
-    specific: "Specific date",
+    range: "Date range",
   };
 
   return (
@@ -126,7 +132,7 @@ export default function CrmLocationsPage() {
           </p>
           <h1 className="mt-0.5 text-2xl font-bold text-gray-900 dark:text-white">
             Where your customers are · {dateModeLabel[dateMode]}
-            {dateMode === "specific" && specificDate ? ` (${specificDate})` : ""}
+            {dateMode === "range" && (startDate || endDate) ? ` (${startDate || "any"} to ${endDate || "any"})` : ""}
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -148,25 +154,41 @@ export default function CrmLocationsPage() {
           >
             <option value="all">📅 All time</option>
             <option value="today">📅 Today</option>
-            <option value="specific">📅 Specific date…</option>
+            <option value="range">📅 Date range…</option>
           </select>
-          {dateMode === "specific" && (
-            <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-900">
-              <Calendar className="h-4 w-4 text-gray-400" />
-              <input
-                type="date"
-                value={specificDate}
-                max={todayStr}
-                onChange={(e) => setSpecificDate(e.target.value)}
-                className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
-              />
-              {specificDate && (
+          {dateMode === "range" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+                <span className="text-xs text-gray-400 font-medium">From:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  max={endDate || todayStr}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+                <span className="text-xs text-gray-400 font-medium">To:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  max={todayStr}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+                />
+              </div>
+              {(startDate || endDate) && (
                 <button
                   type="button"
-                  onClick={() => setSpecificDate("")}
-                  className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800"
                 >
-                  clear
+                  Clear
                 </button>
               )}
             </div>
