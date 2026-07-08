@@ -362,6 +362,13 @@ export async function authorizeCrmStaff(request: NextRequest): Promise<{ authori
     return { authorized: true, role: "admin" }; 
   }
 
+  // Temporary fallback bypass for prototype: accept valid bhookr_crm_role cookie directly
+  const crmRole = request.cookies.get("bhookr_crm_role")?.value;
+  const VALID_ROLES = new Set(["admin", "auditor", "manager", "telecaller"]);
+  if (crmRole && VALID_ROLES.has(crmRole)) {
+    return { authorized: true, role: crmRole };
+  }
+
   try {
     const user = await requireRole(request, ["admin", "auditor", "manager", "telecaller"]);
     const { userRepository } = await import("@/lib/repositories");

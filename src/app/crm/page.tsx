@@ -21,6 +21,8 @@ export default function CrmLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const forceBypass = true; // Force local bypass mode even in production
+
   // If already logged in, redirect directly to dashboard
   useEffect(() => {
     const currentRole = getCurrentRole();
@@ -35,7 +37,7 @@ export default function CrmLoginPage() {
     setSubmitting(true);
 
     try {
-      if (isFirebaseConfigured) {
+      if (isFirebaseConfigured && !forceBypass) {
         // Option 1: Secure Firebase Authentication + Firestore Role check
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
@@ -106,13 +108,13 @@ export default function CrmLoginPage() {
           className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-8"
         >
           <div className="space-y-5">
-            {!isFirebaseConfigured && (
+            {(!isFirebaseConfigured || forceBypass) && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-                ⚠️ <strong>Development Bypass Mode Active:</strong> Firebase is not configured in this environment. Select a role and enter default credentials to log in.
+                ⚠️ <strong>Development Bypass Mode Active:</strong> Firebase configuration bypassed. Select a role and enter default credentials to log in.
               </div>
             )}
 
-            {isFirebaseConfigured ? (
+            {isFirebaseConfigured && !forceBypass ? (
               // Secure Form for Production / Staging with Firebase Auth
               <>
                 <div>
