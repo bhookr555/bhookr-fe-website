@@ -129,7 +129,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const msg = error instanceof Error ? error.message : "Failed to create invoice";
+    let msg = "Failed to create invoice";
+    if (error instanceof Error) {
+      msg = error.message;
+    }
+    const rzpErr = error as any;
+    if (rzpErr.error?.description) {
+      msg = rzpErr.error.description;
+    } else if (rzpErr.description) {
+      msg = rzpErr.description;
+    }
+
     return NextResponse.json(
       { success: false, error: msg },
       { status: 500 }

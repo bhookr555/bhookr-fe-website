@@ -600,9 +600,11 @@ export async function createRazorpayInvoice(
       }
     };
 
-    if (request.phone && request.phone.trim().length >= 10) {
+    if (request.phone && request.phone.trim()) {
       const cleaned = request.phone.replace(/\D/g, '');
-      customerDetails.contact = cleaned.length === 10 ? `+91${cleaned}` : `+${cleaned}`;
+      if (cleaned.length >= 10) {
+        customerDetails.contact = cleaned.length === 10 ? `+91${cleaned}` : `+${cleaned}`;
+      }
     }
 
     const lineItems = [
