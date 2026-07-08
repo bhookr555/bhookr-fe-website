@@ -519,3 +519,161 @@ export function verifyWebhookSignature(
     return false;
   }
 }
+
+/**
+ * Fetch all active items from Razorpay catalog
+ */
+export async function fetchRazorpayItems(): Promise<any[]> {
+  try {
+    const razorpay = getRazorpayInstance() as any;
+    logger.info('[Razorpay] Fetching items catalog');
+    const response = await razorpay.items.all({ active: 1, count: 100 });
+    return response.items || [];
+  } catch (error) {
+    logger.error('[Razorpay] Failed to fetch items catalog', error as Error);
+    throw error;
+  }
+}
+
+/**
+ * Request parameters for creating a Razorpay Invoice
+ */
+export interface CreateRazorpayInvoiceRequest {
+  email: string;
+  name: string;
+  phone: string;
+  invoiceNumber?: string;
+  description: string;
+  planType: string;
+  amount: number;
+  deliveryCharge?: number;
+  issueDate?: string;
+  expiryDate?: string;
+  billingAddress: {
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    zipcode: string;
+  };
+}
+
+/**
+ * Response parameters for creating a Razorpay Invoice
+ */
+export interface CreateRazorpayInvoiceResponse {
+  success: boolean;
+  id: string;
+  invoiceNumber: string;
+  shortUrl: string;
+}
+
+/**
+ * Create and Issue a Razorpay Invoice
+ */
+export async function createRazorpayInvoice(
+  request: CreateRazorpayInvoiceRequest
+): Promise<CreateRazorpayInvoiceResponse> {
+  const startTime = Date.now();
+  try {
+    const razorpay = getRazorpayInstance() as any;
+    logger.info('[Razorpay] Creating invoice for', { email: request.email, amount: request.amount });
+
+    const customerDetails: any = {
+      name: request.name || 'Customer',
+      email: request.email,
+      billing_address: {
+        line1: request.billingAddress.line1,
+        line2: request.billingAddress.line2 || undefined,
+        city: request.billingAddress.city,
+        state: request.billingAddress.state,
+        zipcode: request.billingAddress.zipcode,
+        country: "in",
+      },
+      shipping_address: {
+        line1: request.billingAddress.line1,
+        line2: request.billingAddress.line2 || undefined,
+        city: request.billingAddress.city,
+        state: request.billingAddress.state,
+        zipcode: request.billingAddress.zipcode,
+        country: "in",
+      }
+    };
+
+    if (request.phone && request.phone.trim().length >= 10) {
+      const cleaned = request.phone.replace(/\D/g, '');
+      customerDetails.contact = cleaned.length === 10 ? `+91${cleaned}` : `+${cleaned}`;
+    }
+
+    const lineItems = [
+      {
+        name: request.description,
+        amount: Math.round(request.amount * 100), // in paise
+        currency: 'INR',
+        quantity: 1,
+      }
+    ];
+
+    if (request.deliveryCharge && request.deliveryCharge > 0) {
+      lineItems.push({
+        name: "Delivery Charges",
+        amount: Math.round(request.deliveryCharge * 100), // in paise
+        currency: 'INR',
+        quantity: 1,
+      });
+    }
+
+    const options: any = {
+      type: 'invoice',
+      description: request.description,
+      customer: customerDetails,
+      line_items: lineItems,
+      sms_notify: true,
+      email_notify: true,
+      currency: 'INR',
+      notes: {
+        leadEmail: request.email,
+        planType: request.planType,
+        source: 'crm_invoice',
+      }
+    };
+
+    if (request.invoiceNumber && request.invoiceNumber.trim()) {
+      options.invoice_number = request.invoiceNumber.trim();
+    }
+
+    if (request.issueDate) {
+      options.date = Math.floor(new Date(request.issueDate).getTime() / 1000);
+    }
+
+    if (request.expiryDate) {
+      options.expire_by = Math.floor(new Date(request.expiryDate).getTime() / 1000);
+    }
+
+    logger.info('[Razorpay] Calling invoices.create');
+    const draftInvoice = await razorpay.invoices.create(options);
+
+    logger.info('[Razorpay] Issuing invoice', { invoiceId: draftInvoice.id });
+    const issuedInvoice = await razorpay.invoices.issue(draftInvoice.id);
+
+    logger.info('[Razorpay] Invoice issued successfully', {
+      id: issuedInvoice.id,
+      invoiceNumber: issuedInvoice.invoice_number,
+      shortUrl: issuedInvoice.short_url,
+      duration: Date.now() - startTime,
+    });
+
+    return {
+      success: true,
+      id: issuedInvoice.id as string,
+      invoiceNumber: issuedInvoice.invoice_number as string,
+      shortUrl: issuedInvoice.short_url as string,
+    };
+  } catch (error) {
+    logger.error('[Razorpay] Failed to create/issue invoice', error as Error, {
+      email: request.email,
+      duration: Date.now() - startTime,
+    });
+    throw error;
+  }
+}

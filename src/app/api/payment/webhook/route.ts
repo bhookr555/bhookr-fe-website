@@ -195,6 +195,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Handle invoice paid event
+    if (event === 'invoice.paid') {
+      const invoiceEntity = payload.payload?.invoice?.entity;
+      const leadEmail = invoiceEntity?.notes?.leadEmail;
+
+      if (leadEmail && invoiceEntity && adminDb) {
+        logger.info('[Webhook] Auto-reconciling CRM lead status to CONVERTED via invoice paid event', {
+          leadEmail,
+          invoiceId: invoiceEntity.id,
+          amount: invoiceEntity.amount / 100,
+        });
+
+        const key = String(leadEmail).toLowerCase().trim();
+        await adminDb.collection("crm_pipeline").doc(key).set({
+          status: "converted",
+          updatedAt: new Date().toISOString(),
+          updatedBy: "system",
+          paymentMethod: "online",
+          amount: invoiceEntity.amount / 100,
+          planType: invoiceEntity.notes?.planType || "custom",
+          notes: `Automatically converted via Razorpay Invoice (ID: ${invoiceEntity.id}, No: ${invoiceEntity.invoice_number})`,
+        }, { merge: true });
+      }
+    }
+
     // Handle refund events
     if (event === 'refund.created' || event === 'refund.processed') {
       if (!refundEntity) {

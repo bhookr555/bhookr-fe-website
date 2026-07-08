@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { Copy, IndianRupee, Share2, X, Check, ExternalLink } from "lucide-react";
+import { useState, useEffect, type FormEvent } from "react";
+import { Copy, IndianRupee, Share2, X, Check, ExternalLink, Calendar, Plus, MapPin } from "lucide-react";
 import { PLAN_TYPE_OPTIONS } from "@/lib/crm/pipeline";
 import { toast } from "sonner";
 
@@ -12,18 +12,116 @@ interface PaymentLinkModalProps {
   onClose: () => void;
 }
 
+const INDIAN_STATES = [
+  "Telangana",
+  "Andhra Pradesh",
+  "Karnataka",
+  "Maharashtra",
+  "Tamil Nadu",
+  "Kerala",
+  "Delhi",
+  "Uttar Pradesh",
+  "Gujarat",
+  "Rajasthan",
+  "Haryana",
+  "Punjab",
+  "West Bengal",
+  "Bihar",
+  "Madhya Pradesh"
+];
+
 export function PaymentLinkModal({
   email,
   name,
   phone,
   onClose,
 }: PaymentLinkModalProps) {
-  const [planType, setPlanType] = useState("custom");
-  const [amount, setAmount] = useState("");
+  // Pre-fetch states
+  const [catalogItems, setCatalogItems] = useState<any[]>([]);
+  const [loadingMetadata, setLoadingMetadata] = useState(true);
+
+  // Form states
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [expiryDate, setExpiryDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split("T")[0];
+  });
+
+  // Selected item / custom description
+  const [selectedItemId, setSelectedItemId] = useState("custom");
   const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [planType, setPlanType] = useState("custom");
+
+  // Delivery charge
+  const [addDeliveryCharge, setAddDeliveryCharge] = useState(false);
+  const [deliveryCharge, setDeliveryCharge] = useState("99");
+
+  // Address
+  const [line1, setLine1] = useState("");
+  const [line2, setLine2] = useState("");
+  const [city, setCity] = useState("Hyderabad");
+  const [state, setState] = useState("Telangana");
+  const [zipcode, setZipcode] = useState("");
+
+  // Submission / success states
   const [loading, setLoading] = useState(false);
   const [shortUrl, setShortUrl] = useState<string | null>(null);
+  const [finalInvoiceNo, setFinalInvoiceNo] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // Fetch initial next invoice sequence number and Razorpay items
+  useEffect(() => {
+    async function loadMetadata() {
+      try {
+        // 1. Fetch next invoice number
+        const numRes = await fetch("/api/crm/payment/next-invoice-number");
+        const numData = await numRes.json();
+        if (numData.success && numData.nextInvoiceNumber) {
+          setInvoiceNumber(String(numData.nextInvoiceNumber));
+        }
+
+        // 2. Fetch Razorpay items catalog
+        const itemsRes = await fetch("/api/crm/payment/items");
+        const itemsData = await itemsRes.json();
+        if (itemsData.success && Array.isArray(itemsData.items)) {
+          setCatalogItems(itemsData.items);
+        }
+      } catch (err) {
+        console.error("Failed to load invoice metadata", err);
+      } finally {
+        setLoadingMetadata(false);
+      }
+    }
+    loadMetadata();
+  }, []);
+
+  // Sync selected catalog item with inputs
+  const handleItemChange = (itemId: string) => {
+    setSelectedItemId(itemId);
+    if (itemId === "custom") {
+      setDescription("");
+      setAmount("");
+      setPlanType("custom");
+    } else {
+      const item = catalogItems.find((i) => i.id === itemId);
+      if (item) {
+        setDescription(item.name || "");
+        setAmount(String((item.amount || 0) / 100)); // paise to INR
+        
+        // Match planType dynamically based on name keywords
+        const lowerName = String(item.name).toLowerCase();
+        if (lowerName.includes("lite")) setPlanType("lite");
+        else if (lowerName.includes("standard")) setPlanType("standard");
+        else if (lowerName.includes("elite")) setPlanType("elite");
+        else if (lowerName.includes("7 day") || lowerName.includes("week")) setPlanType("7_days");
+        else if (lowerName.includes("monthly")) setPlanType("monthly");
+        else setPlanType("custom");
+      }
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,32 +129,54 @@ export function PaymentLinkModal({
       toast.error("Please enter a valid amount");
       return;
     }
+    if (!line1.trim()) {
+      toast.error("Please enter Street Address (Line 1)");
+      return;
+    }
+    if (!zipcode.match(/^\d{6}$/)) {
+      toast.error("Please enter a valid 6-digit PIN code");
+      return;
+    }
 
     setLoading(true);
     try {
-      const res = await fetch("/api/crm/payment/create-link", {
+      const payload = {
+        email,
+        name,
+        phone,
+        invoiceNumber: invoiceNumber.trim() || undefined,
+        description: description.trim() || "Meals Subscription",
+        planType,
+        amount: Number(amount),
+        deliveryCharge: addDeliveryCharge ? Number(deliveryCharge) : undefined,
+        issueDate: issueDate || undefined,
+        expiryDate: expiryDate || undefined,
+        billingAddress: {
+          line1: line1.trim(),
+          line2: line2.trim() || undefined,
+          city: city.trim(),
+          state,
+          zipcode: zipcode.trim(),
+        },
+      };
+
+      const res = await fetch("/api/crm/payment/create-invoice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          name,
-          phone,
-          amount: Number(amount),
-          planType,
-          description: description.trim() || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (data.success && data.shortUrl) {
         setShortUrl(data.shortUrl);
-        toast.success("Payment link generated successfully!");
+        setFinalInvoiceNo(data.invoiceNumber || invoiceNumber);
+        toast.success(`Invoice ${data.invoiceNumber} created and issued!`);
       } else {
-        toast.error(data.error || "Failed to generate payment link");
+        toast.error(data.error || "Failed to generate invoice");
       }
     } catch (err) {
       console.error(err);
-      toast.error("An error occurred while generating the payment link");
+      toast.error("An error occurred while generating the invoice");
     } finally {
       setLoading(false);
     }
@@ -67,19 +187,17 @@ export function PaymentLinkModal({
     try {
       await navigator.clipboard.writeText(shortUrl);
       setCopied(true);
-      toast.success("Link copied to clipboard!");
+      toast.success("Invoice URL copied!");
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      toast.error("Failed to copy link");
+      toast.error("Failed to copy URL");
     }
   };
 
   const handleWhatsAppShare = () => {
     if (!shortUrl) return;
-    const selectedPlanLabel = PLAN_TYPE_OPTIONS.find((p) => p.value === planType)?.label || "Meals subscription";
-    const textMessage = `Hello ${name || "there"},\n\nHere is your unique payment link for the Bhookr fresh meal subscription (${selectedPlanLabel}):\n👉 ${shortUrl}\n\nPlease click to complete the secure payment.\n\nThank you,\nTeam Bhookr`;
+    const textMessage = `Hello ${name || "there"},\n\nHere is your tax invoice and secure payment request for the Bhookr fresh meal subscription:\n📄 Invoice #${finalInvoiceNo}\n👉 Payment Link: ${shortUrl}\n\nPlease click to complete the secure payment.\n\nThank you,\nTeam Bhookr`;
     
-    // Clean phone number (remove non-digits)
     const cleanedPhone = phone.replace(/\D/g, "");
     const whatsappPhone = cleanedPhone.length === 10 ? `91${cleanedPhone}` : cleanedPhone;
     
@@ -94,11 +212,12 @@ export function PaymentLinkModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-gray-900 overflow-hidden">
-        <div className="flex items-center justify-between border-b border-gray-250 px-5 py-4 dark:border-gray-800">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-gray-900 overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-250 px-5 py-4 dark:border-gray-800 shrink-0">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white">
-              Generate Payment Link
+              Create & Issue Tax Invoice
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {name || "Customer"} · {email}
@@ -113,30 +232,97 @@ export function PaymentLinkModal({
           </button>
         </div>
 
-        {!shortUrl ? (
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        {loadingMetadata ? (
+          <div className="p-10 text-center text-sm text-gray-500">
+            Fetching Razorpay Catalog & Invoice settings...
+          </div>
+        ) : !shortUrl ? (
+          <form onSubmit={handleSubmit} className="overflow-y-auto p-5 space-y-4 flex-1">
+            {/* Invoice Sequence & Date Configuration */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Invoice Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="Auto-generated"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Issue Date
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={issueDate}
+                    onChange={(e) => setIssueDate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Expiry Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                />
+              </div>
+            </div>
+
+            <hr className="border-gray-200 dark:border-gray-800" />
+
+            {/* Catalog Items Selection */}
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                Razorpay Catalog Item
+              </label>
+              <select
+                value={selectedItemId}
+                onChange={(e) => handleItemChange(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+              >
+                <option value="custom">✍️ Manual / Custom Item Entry</option>
+                {catalogItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} (₹{item.amount / 100})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Description & Cost */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                  Plan type
+                  Item Description
                 </label>
-                <select
-                  value={planType}
-                  onChange={(e) => setPlanType(e.target.value)}
-                  disabled={loading}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500"
-                >
-                  {PLAN_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Standard NV BF LUNCH"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={selectedItemId !== "custom"}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                  Amount (₹)
+                  Rate / Item (₹)
                 </label>
                 <div className="relative">
                   <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -148,32 +334,129 @@ export function PaymentLinkModal({
                     placeholder="500"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    disabled={loading}
-                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500"
+                    disabled={selectedItemId !== "custom"}
+                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
                   />
                 </div>
               </div>
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                Custom Notes / Description (optional)
+            {/* Add delivery charges */}
+            <div className="p-3 bg-gray-50 dark:bg-gray-950/40 rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={addDeliveryCharge}
+                  onChange={(e) => setAddDeliveryCharge(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-[#E31E24] focus:ring-[#E31E24]"
+                />
+                Include Delivery Charges
               </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                disabled={loading}
-                rows={2}
-                placeholder="e.g. Standard 2 meals monthly subscription"
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500"
-              />
+
+              {addDeliveryCharge && (
+                <div className="flex items-center gap-3">
+                  <div className="relative max-w-[150px]">
+                    <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="number"
+                      placeholder="99"
+                      required
+                      value={deliveryCharge}
+                      onChange={(e) => setDeliveryCharge(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-2.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none"
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-500">Will be billed as a secondary line item on the invoice.</span>
+                </div>
+              )}
             </div>
 
-            <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-gray-950 dark:text-gray-400">
-              Note: This will generate a unique link via Razorpay. An automated Email and SMS will be sent to the customer automatically by Razorpay.
+            <hr className="border-gray-200 dark:border-gray-800" />
+
+            {/* Address Form (Billing / Shipping) */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                <MapPin className="h-4 w-4 text-red-500" />
+                Customer Address (Billing & Shipping)
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-[10px] text-gray-500 dark:text-gray-400">
+                    Street Address (Line 1)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Flat / House No, Building, Street"
+                    value={line1}
+                    onChange={(e) => setLine1(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-[10px] text-gray-500 dark:text-gray-400">
+                    Landmark / Area (Line 2)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Near temple, Gachibowli (optional)"
+                    value={line2}
+                    onChange={(e) => setLine2(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[10px] text-gray-500 dark:text-gray-400">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-[10px] text-gray-500 dark:text-gray-400">
+                    PIN Code (Zip)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    pattern="\d{6}"
+                    placeholder="500032"
+                    value={zipcode}
+                    onChange={(e) => setZipcode(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-[10px] text-gray-500 dark:text-gray-400">
+                    State (Place of Supply)
+                  </label>
+                  <select
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  >
+                    {INDIAN_STATES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-gray-250 pt-4 dark:border-gray-800">
+            {/* Footer buttons */}
+            <div className="flex items-center justify-end gap-2 border-t border-gray-250 pt-4 dark:border-gray-800 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
@@ -187,27 +470,28 @@ export function PaymentLinkModal({
                 disabled={loading}
                 className="rounded-lg bg-[#E31E24] hover:bg-[#C41E3A] px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50 transition"
               >
-                {loading ? "Generating..." : "Generate Link"}
+                {loading ? "Issuing Invoice..." : "Create & Issue Invoice"}
               </button>
             </div>
           </form>
         ) : (
-          <div className="p-5 space-y-5">
+          /* Success display */
+          <div className="p-5 space-y-5 shrink-0">
             <div className="text-center py-2">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-950/30">
                 <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
               <h4 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">
-                Unique Link Generated!
+                Tax Invoice Issued Successfully!
               </h4>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Link is ready to be shared with {name || email}.
+                Invoice #{finalInvoiceNo} is active and Razorpay has dispatched SMS/Email notifications.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                Payment URL
+                Invoice Payment URL
               </label>
               <div className="flex gap-2">
                 <input
@@ -237,7 +521,7 @@ export function PaymentLinkModal({
                 className="flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition"
               >
                 <Share2 className="h-4 w-4" />
-                Share on WhatsApp
+                Share Invoice (WhatsApp)
               </button>
               <a
                 href={shortUrl}
@@ -246,7 +530,7 @@ export function PaymentLinkModal({
                 className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 transition"
               >
                 <ExternalLink className="h-4 w-4" />
-                Open Link
+                Preview Invoice
               </a>
             </div>
 
