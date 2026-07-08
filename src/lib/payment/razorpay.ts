@@ -653,23 +653,28 @@ export async function createRazorpayInvoice(
     }
 
     logger.info('[Razorpay] Calling invoices.create');
-    const draftInvoice = await razorpay.invoices.create(options);
+    const createdInvoice = await razorpay.invoices.create(options);
 
-    logger.info('[Razorpay] Issuing invoice', { invoiceId: draftInvoice.id });
-    const issuedInvoice = await razorpay.invoices.issue(draftInvoice.id);
+    let finalInvoice = createdInvoice;
+    if (createdInvoice.status === 'draft') {
+      logger.info('[Razorpay] Issuing draft invoice', { invoiceId: createdInvoice.id });
+      finalInvoice = await razorpay.invoices.issue(createdInvoice.id);
+    } else {
+      logger.info('[Razorpay] Invoice is already in status:', createdInvoice.status);
+    }
 
-    logger.info('[Razorpay] Invoice issued successfully', {
-      id: issuedInvoice.id,
-      invoiceNumber: issuedInvoice.invoice_number,
-      shortUrl: issuedInvoice.short_url,
+    logger.info('[Razorpay] Invoice processed successfully', {
+      id: finalInvoice.id,
+      invoiceNumber: finalInvoice.invoice_number,
+      shortUrl: finalInvoice.short_url,
       duration: Date.now() - startTime,
     });
 
     return {
       success: true,
-      id: issuedInvoice.id as string,
-      invoiceNumber: issuedInvoice.invoice_number as string,
-      shortUrl: issuedInvoice.short_url as string,
+      id: finalInvoice.id as string,
+      invoiceNumber: finalInvoice.invoice_number as string,
+      shortUrl: finalInvoice.short_url as string,
     };
   } catch (error) {
     logger.error('[Razorpay] Failed to create/issue invoice', error as Error, {
