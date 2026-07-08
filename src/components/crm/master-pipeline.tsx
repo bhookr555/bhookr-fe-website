@@ -7,6 +7,8 @@ import {
   AlertCircle,
   ArrowRight,
   Calendar,
+  ChevronDown,
+  Download,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -79,6 +81,8 @@ export function MasterPipeline() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [todayStr, setTodayStr] = useState<string>("");
+
+  const [exportOpen, setExportOpen] = useState(false);
 
   const [convertingLead, setConvertingLead] = useState<{
     email: string;
@@ -234,6 +238,259 @@ export function MasterPipeline() {
     }
   };
 
+  const exportToCsv = () => {
+    if (visible.length === 0) {
+      toast.error("No leads available to export");
+      return;
+    }
+
+    const headers = [
+      "No.",
+      "Name",
+      "Email",
+      "Phone Number",
+      "Plan Interest",
+      "Status",
+      "Timestamp",
+      "Subscription Type",
+      "Plan",
+      "Checkout Visited",
+      "Last Step Completed",
+    ];
+
+    const rows = visible.map((item, idx) => {
+      return [
+        idx + 1,
+        item.lead.name || "",
+        item.lead.email || "",
+        item.lead.phoneNumber || "",
+        item.lead.subscriptionType || "",
+        item.status,
+        item.lead.timestamp ? new Date(item.lead.timestamp).toLocaleString("en-IN") : "",
+        item.lead.subscriptionType || "",
+        item.lead.plan || "",
+        item.lead.checkoutVisited !== undefined ? String(item.lead.checkoutVisited) : "",
+        item.lead.lastStepCompleted !== undefined ? String(item.lead.lastStepCompleted) : "",
+      ];
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) =>
+        row
+          .map((val) => {
+            const strVal = String(val);
+            return `"${strVal.replace(/"/g, '""')}"`;
+          })
+          .join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `bhookr_leads_${dateMode}_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("CSV export downloaded successfully!");
+  };
+
+  const exportToPdf = () => {
+    if (visible.length === 0) {
+      toast.error("No leads available to export");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error("Popup blocked! Please allow popups to view/print PDF.");
+      return;
+    }
+
+    const dateRangeStr =
+      dateMode === "today"
+        ? `Today (${todayStr})`
+        : dateMode === "range"
+        ? `${startDate || "any"} to ${endDate || "any"}`
+        : "All time";
+
+    const rowsHtml = visible
+      .map(
+        (item, idx) => `
+      <tr>
+        <td>${idx + 1}</td>
+        <td><strong>${item.lead.name || "—"}</strong></td>
+        <td>${item.lead.email || "—"}</td>
+        <td>${item.lead.phoneNumber || "—"}</td>
+        <td>${humanize(item.lead.subscriptionType) || "—"}${item.lead.plan ? ` (${item.lead.plan})` : ""}</td>
+        <td>${formatTimestamp(item.lead.timestamp)}</td>
+        <td><span class="status-badge status-${item.status}">${item.status.toUpperCase()}</span></td>
+      </tr>
+    `
+      )
+      .join("");
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>BHOOKR CRM Leads Report</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #1a1a1a;
+            margin: 40px 30px;
+            font-size: 13px;
+            line-height: 1.4;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #e31e24;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+          }
+          .brand {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #e31e24;
+            text-transform: uppercase;
+          }
+          .brand span {
+            color: #333333;
+            font-weight: 400;
+          }
+          .report-info {
+            text-align: right;
+            font-size: 11px;
+            color: #666;
+          }
+          .title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 5px;
+            color: #111;
+          }
+          .filters-summary {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+            font-size: 12px;
+          }
+          .filters-summary div strong {
+            color: #495057;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+          }
+          th {
+            background-color: #f1f3f5;
+            color: #495057;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #dee2e6;
+            padding: 8px 10px;
+            text-align: left;
+          }
+          td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 11px;
+            vertical-align: top;
+          }
+          tr:nth-child(even) td {
+            background-color: #fafbfe;
+          }
+          .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+          }
+          .status-new { background-color: #e0f2fe; color: #0369a1; }
+          .status-follow_up { background-color: #e0e7ff; color: #4338ca; }
+          .status-trial_requested { background-color: #f3e8ff; color: #6b21a8; }
+          .status-hot_prospect { background-color: #ffedd5; color: #c2410c; }
+          .status-future_prospect { background-color: #ccfbf1; color: #0f766e; }
+          .status-converted { background-color: #dcfce7; color: #15803d; }
+          .status-sale_rejected { background-color: #fee2e2; color: #b91c1c; }
+          
+          @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            thead { display: table-header-group; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="brand">BHOOKR <span>CRM</span></div>
+            <div class="report-info" style="text-align: left; margin-top: 3px;">Fresh Meal Subscriptions</div>
+          </div>
+          <div class="report-info">
+            <div>Generated: ${new Date().toLocaleString("en-IN")}</div>
+            <div>Staff Role: ${role || "admin"}</div>
+          </div>
+        </div>
+
+        <div class="title">Leads Report</div>
+        <div class="filters-summary">
+          <div><strong>Date Filter:</strong> ${dateRangeStr}</div>
+          <div><strong>Status Filter:</strong> ${filter === "all" ? "All Statuses" : filter.toUpperCase()}</div>
+          <div><strong>Leads Found:</strong> ${visible.length}</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 5%">#</th>
+              <th style="width: 20%">Name</th>
+              <th style="width: 20%">Email</th>
+              <th style="width: 15%">Phone</th>
+              <th style="width: 15%">Plan Interest</th>
+              <th style="width: 15%">Captured Date</th>
+              <th style="width: 10%">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 500);
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   const dateModeLabel: Record<DateFilter, string> = {
     today: "Today",
     all: "All time",
@@ -272,14 +529,56 @@ export function MasterPipeline() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => fetchAll(false, true)}
-          disabled={refreshing}
-          className="inline-flex items-center gap-2 self-start rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2 self-start">
+          <button
+            onClick={() => fetchAll(false, true)}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setExportOpen(!exportOpen)}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            >
+              <Download className="h-4 w-4" />
+              Export
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </button>
+            
+            {exportOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setExportOpen(false)}
+                />
+                <div className="absolute right-0 mt-1.5 w-44 origin-top-right rounded-xl border border-gray-200 bg-white p-1 shadow-lg ring-1 ring-black/5 focus:outline-none dark:border-gray-800 dark:bg-gray-950 z-50">
+                  <button
+                    onClick={() => {
+                      exportToCsv();
+                      setExportOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  >
+                    📄 Export CSV (Excel)
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportToPdf();
+                      setExportOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  >
+                    📕 Export PDF (Print)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {error && (
