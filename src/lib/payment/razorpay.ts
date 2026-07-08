@@ -210,6 +210,107 @@ export async function createRazorpayOrder(
 }
 
 /**
+ * Create Razorpay Payment Link Request
+ */
+export interface CreateRazorpayPaymentLinkRequest {
+  email: string;
+  name: string;
+  phone: string;
+  amount: number; // in INR
+  description: string;
+  planType: string;
+}
+
+/**
+ * Create Razorpay Payment Link Response
+ */
+export interface CreateRazorpayPaymentLinkResponse {
+  success: boolean;
+  id: string;
+  shortUrl: string;
+}
+
+/**
+ * Create a Razorpay Payment Link
+ * 
+ * @param request - Payment link creation request
+ * @returns Razorpay payment link details
+ */
+export async function createRazorpayPaymentLink(
+  request: CreateRazorpayPaymentLinkRequest
+): Promise<CreateRazorpayPaymentLinkResponse> {
+  const startTime = Date.now();
+  
+  try {
+    logger.info('[Razorpay] Creating payment link', {
+      email: request.email,
+      amount: request.amount,
+      planType: request.planType,
+    });
+    
+    const amountInPaise = Math.round(request.amount * 100);
+    
+    if (amountInPaise < 100) {
+      throw new Error('Amount must be at least ₹1');
+    }
+    
+    const razorpay = getRazorpayInstance() as any;
+    
+    const options: any = {
+      amount: amountInPaise,
+      currency: 'INR',
+      accept_partial: false,
+      description: request.description,
+      customer: {
+        name: request.name || 'Customer',
+        email: request.email,
+      },
+      notify: {
+        sms: true,
+        email: true,
+      },
+      reminder_enable: true,
+      notes: {
+        leadEmail: request.email,
+        planType: request.planType,
+        source: 'crm_payment_link',
+      },
+    };
+    
+    if (request.phone && request.phone.trim().length >= 10) {
+      const cleanedPhone = request.phone.replace(/\D/g, '');
+      const contact = cleanedPhone.length === 10 ? `+91${cleanedPhone}` : `+${cleanedPhone}`;
+      options.customer.contact = contact;
+    }
+    
+    logger.info('[Razorpay] Calling paymentLink.create with options', {
+      email: request.email,
+      amount: request.amount,
+    });
+    
+    const paymentLink = await razorpay.paymentLink.create(options);
+    
+    logger.info('[Razorpay] Payment link created successfully', {
+      id: paymentLink.id,
+      shortUrl: paymentLink.short_url,
+      duration: Date.now() - startTime,
+    });
+    
+    return {
+      success: true,
+      id: paymentLink.id as string,
+      shortUrl: paymentLink.short_url as string,
+    };
+  } catch (error) {
+    logger.error('[Razorpay] Failed to create payment link', error as Error, {
+      email: request.email,
+      duration: Date.now() - startTime,
+    });
+    throw error;
+  }
+}
+
+/**
  * Verify Razorpay payment signature
  * 
  * This function validates that the payment was actually completed on Razorpay

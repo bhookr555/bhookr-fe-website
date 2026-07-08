@@ -29,6 +29,7 @@ import {
   type PipelineMap,
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
+import { PaymentLinkModal } from "@/components/crm/payment-link-modal";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -135,6 +136,12 @@ export default function CrmLeadsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const [paymentLead, setPaymentLead] = useState<{
+    email: string;
+    name: string;
+    phone: string;
+  } | null>(null);
 
   const fetchAll = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
@@ -428,12 +435,25 @@ export default function CrmLeadsPage() {
                         </td>
                       ))}
                       <td className="sticky right-0 border-b border-gray-100 bg-white px-3 py-2 text-right dark:border-gray-800 dark:bg-gray-900">
-                        <Link
-                          href={href}
-                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[#E31E24] hover:bg-red-50 dark:hover:bg-red-950/30"
-                        >
-                          Open <ArrowRight className="h-3 w-3" />
-                        </Link>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setPaymentLead({
+                              email: emailKey,
+                              name: row.name || "",
+                              phone: String(row.phoneNumber || ""),
+                            })}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                            title="Generate Razorpay Payment Link"
+                          >
+                            💳 Link
+                          </button>
+                          <Link
+                            href={href}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[#E31E24] hover:bg-red-50 dark:hover:bg-red-950/30"
+                          >
+                            Open <ArrowRight className="h-3 w-3" />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -443,6 +463,15 @@ export default function CrmLeadsPage() {
           </table>
         </div>
       </div>
+
+      {paymentLead && (
+        <PaymentLinkModal
+          email={paymentLead.email}
+          name={paymentLead.name}
+          phone={paymentLead.phone}
+          onClose={() => setPaymentLead(null)}
+        />
+      )}
     </div>
   );
 }

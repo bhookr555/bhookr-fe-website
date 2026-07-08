@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
       }
 
       const orderId = paymentEntity.notes?.orderId;
+      const leadEmail = paymentEntity.notes?.leadEmail;
       
       if (orderId) {
         // Update order to PAID - this will reconcile orders that were in PENDING status
@@ -122,6 +123,26 @@ export async function POST(request: NextRequest) {
           paymentId: paymentEntity.id,
         });
       }
+
+      // Auto-reconcile CRM Lead Status to CONVERTED
+      if (leadEmail && adminDb) {
+        logger.info('[Webhook] Auto-reconciling CRM lead status to CONVERTED via payment note', {
+          leadEmail,
+          paymentId: paymentEntity.id,
+          amount: paymentEntity.amount / 100,
+        });
+
+        const key = String(leadEmail).toLowerCase().trim();
+        await adminDb.collection("crm_pipeline").doc(key).set({
+          status: "converted",
+          updatedAt: new Date().toISOString(),
+          updatedBy: "system",
+          paymentMethod: paymentEntity.method || "online",
+          amount: paymentEntity.amount / 100,
+          planType: paymentEntity.notes?.planType || "custom",
+          notes: `Automatically converted via Razorpay Payment (ID: ${paymentEntity.id})`,
+        }, { merge: true });
+      }
     }
 
     // Handle payment failed event
@@ -146,6 +167,31 @@ export async function POST(request: NextRequest) {
         await updateOrderStatus(orderId, 'FAILED', {
           razorpayData: failedRazorpayData,
         });
+      }
+    }
+
+    // Handle payment link paid event
+    if (event === 'payment_link.paid') {
+      const paymentLinkEntity = payload.payload?.payment_link?.entity;
+      const leadEmail = paymentLinkEntity?.notes?.leadEmail;
+
+      if (leadEmail && paymentLinkEntity && adminDb) {
+        logger.info('[Webhook] Auto-reconciling CRM lead status to CONVERTED via payment link paid event', {
+          leadEmail,
+          paymentLinkId: paymentLinkEntity.id,
+          amount: paymentLinkEntity.amount / 100,
+        });
+
+        const key = String(leadEmail).toLowerCase().trim();
+        await adminDb.collection("crm_pipeline").doc(key).set({
+          status: "converted",
+          updatedAt: new Date().toISOString(),
+          updatedBy: "system",
+          paymentMethod: "online",
+          amount: paymentLinkEntity.amount / 100,
+          planType: paymentLinkEntity.notes?.planType || "custom",
+          notes: `Automatically converted via Razorpay Payment Link (ID: ${paymentLinkEntity.id})`,
+        }, { merge: true });
       }
     }
 
