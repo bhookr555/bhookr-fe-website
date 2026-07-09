@@ -545,10 +545,6 @@ export interface CreateRazorpayInvoiceRequest {
   invoiceNumber?: string;
   description: string;
   planType: string;
-  amount: number;
-  discount?: number;
-  applyGst?: boolean;
-  deliveryCharge?: number;
   issueDate?: string;
   expiryDate?: string;
   billingAddress: {
@@ -558,6 +554,13 @@ export interface CreateRazorpayInvoiceRequest {
     state: string;
     zipcode: string;
   };
+  lineItems: Array<{
+    name: string;
+    amount: number; // in paise
+    currency: string;
+    quantity: number;
+    tax_rate?: string;
+  }>;
 }
 
 /**
@@ -579,7 +582,7 @@ export async function createRazorpayInvoice(
   const startTime = Date.now();
   try {
     const razorpay = getRazorpayInstance() as any;
-    logger.info('[Razorpay] Creating invoice for', { email: request.email, amount: request.amount });
+    logger.info('[Razorpay] Creating invoice for', { email: request.email, itemsCount: request.lineItems.length });
 
     const customerDetails: any = {
       name: request.name || 'Customer',
@@ -609,38 +612,11 @@ export async function createRazorpayInvoice(
       }
     }
 
-    const baseMealAmount = request.amount - (request.discount || 0);
-    const lineItems: any[] = [
-      {
-        name: request.description,
-        amount: Math.round(baseMealAmount * 100), // in paise
-        currency: 'INR',
-        quantity: 1,
-      }
-    ];
-
-    if (request.applyGst) {
-      lineItems[0].tax_rate = "5.00";
-    }
-
-    if (request.deliveryCharge && request.deliveryCharge > 0) {
-      const deliveryItem: any = {
-        name: "Delivery Charges",
-        amount: Math.round(request.deliveryCharge * 100), // in paise
-        currency: 'INR',
-        quantity: 1,
-      };
-      if (request.applyGst) {
-        deliveryItem.tax_rate = "18.00";
-      }
-      lineItems.push(deliveryItem);
-    }
-
     const options: any = {
       type: 'invoice',
       description: request.description,
       customer: customerDetails,
-      line_items: lineItems,
+      line_items: request.lineItems,
       sms_notify: true,
       email_notify: true,
       currency: 'INR',

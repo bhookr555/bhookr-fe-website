@@ -12,21 +12,16 @@ const createInvoiceSchema = z.object({
   name: z.string().min(1, "Customer name is required"),
   phone: z.string().optional(),
   invoiceNumber: z.string().optional(),
-  description: z.string().min(1, "Description is required"),
-  planType: z.string().default("custom"),
-  amount: z.number().positive("Amount must be positive").min(1, "Minimum amount is ₹1"),
   discount: z.number().nonnegative().optional(),
-  applyGst: z.boolean().optional(),
-  deliveryCharge: z.number().nonnegative().optional(),
   issueDate: z.string().optional(),
   expiryDate: z.string().optional(),
-  billingAddress: z.object({
-    line1: z.string().min(1, "Billing address line 1 is required"),
-    line2: z.string().optional(),
-    city: z.string().min(1, "City is required"),
-    state: z.string().min(1, "State is required"),
-    zipcode: z.string().regex(/^\d{6}$/, "Invalid 6-digit PIN code"),
-  }),
+  lineItems: z.array(
+    z.object({
+      name: z.string().min(1, "Item name is required"),
+      rate: z.number().nonnegative("Rate must be non-negative"),
+      taxRate: z.number().nonnegative("Tax rate must be non-negative"),
+    })
+  ).min(1, "At least one line item is required"),
 });
 
 export async function POST(req: NextRequest) {
@@ -47,10 +42,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validatedData = createInvoiceSchema.parse(body);
 
-    logger.info("[CRM API] Creating Razorpay Invoice", {
+    logger.info("[CRM API] Creating Razorpay Invoice with dynamic line items", {
       staffRole: authStatus.role,
       targetEmail: validatedData.email,
-      amount: validatedData.amount,
+      itemsCount: validatedData.lineItems.length,
     });
 
     let invoiceNumberToUse = validatedData.invoiceNumber?.trim() || "";
@@ -91,21 +86,94 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Create and Issue Razorpay Invoice
+    // 4. Auto-fill address details from historical Firestore records (orders or subscriptions)
+    let line1 = "N/A - Meal Subscription Customer";
+    let line2 = "";
+    let city = "Hyderabad";
+    let state = "Telangana";
+    let zipcode = "500092";
+
+    if (adminDb) {
+      logger.info("[CRM API] Searching database for customer address details", { email: validatedData.email });
+      
+      // Look up orders first
+      const ordersSnap = await adminDb.collection("orders")
+        .where("customerEmail", "==", validatedData.email)
+        .limit(1)
+        .get();
+
+      if (!ordersSnap.empty && ordersSnap.docs[0]) {
+        const orderData = ordersSnap.docs[0].data();
+        if (orderData?.deliveryAddress) {
+          const addr = orderData.deliveryAddress;
+          line1 = addr.address || line1;
+          city = addr.city || city;
+          state = addr.state || state;
+          zipcode = addr.pinCode || zipcode;
+          logger.info("[CRM API] Address recovered from previous order records", { zipcode });
+        }
+      } else {
+        // Look up subscriptions next
+        const subsSnap = await adminDb.collection("subscriptions")
+          .where("email", "==", validatedData.email)
+          .limit(1)
+          .get();
+
+        if (!subsSnap.empty && subsSnap.docs[0]) {
+          const subData = subsSnap.docs[0].data();
+          if (subData?.address) {
+            line1 = subData.address;
+            const zipMatch = subData.address.match(/\b\d{6}\b/);
+            if (zipMatch) zipcode = zipMatch[0];
+            logger.info("[CRM API] Address recovered from previous subscription records", { zipcode });
+          }
+        }
+      }
+    }
+
+    // 5. Convert frontend line items list to Razorpay API format (including discount subtraction on the first item)
+    const razorpayLineItems = validatedData.lineItems.map((item, idx) => {
+      let rateAfterDiscount = item.rate;
+      
+      if (idx === 0 && validatedData.discount && validatedData.discount > 0) {
+        rateAfterDiscount = Math.max(0, rateAfterDiscount - validatedData.discount);
+      }
+
+      const rzpItem: any = {
+        name: item.name,
+        amount: Math.round(rateAfterDiscount * 100), // in paise
+        currency: 'INR',
+        quantity: 1,
+      };
+
+      if (item.taxRate > 0) {
+        rzpItem.tax_rate = String(item.taxRate) + ".00";
+      }
+
+      return rzpItem;
+    });
+
+    const firstItemName = validatedData.lineItems[0]?.name || "Meal Subscription";
+    const planType = firstItemName.toLowerCase().includes("elite") ? "elite" : "custom";
+
+    // 6. Create and Issue Razorpay Invoice
     const result = await createRazorpayInvoice({
       email: validatedData.email,
       name: validatedData.name,
       phone: validatedData.phone || "",
       invoiceNumber: invoiceNumberToUse,
-      description: validatedData.description,
-      planType: validatedData.planType,
-      amount: validatedData.amount,
-      discount: validatedData.discount,
-      applyGst: validatedData.applyGst,
-      deliveryCharge: validatedData.deliveryCharge,
+      description: firstItemName,
+      planType,
       issueDate: validatedData.issueDate || undefined,
       expiryDate: validatedData.expiryDate || undefined,
-      billingAddress: validatedData.billingAddress,
+      billingAddress: {
+        line1,
+        line2: line2 || undefined,
+        city,
+        state,
+        zipcode,
+      },
+      lineItems: razorpayLineItems,
     });
 
     logger.info("[CRM API] Razorpay invoice created and issued successfully", {
