@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
-import { Copy, IndianRupee, Share2, X, Check, ExternalLink, Calendar, Plus, MapPin } from "lucide-react";
-import { PLAN_TYPE_OPTIONS } from "@/lib/crm/pipeline";
+import { Copy, IndianRupee, Share2, X, Check, ExternalLink, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 interface PaymentLinkModalProps {
@@ -55,9 +54,13 @@ export function PaymentLinkModal({
   const [amount, setAmount] = useState("");
   const [planType, setPlanType] = useState("custom");
 
+  // Discount & GST Apply
+  const [discount, setDiscount] = useState("0");
+  const [applyGst, setApplyGst] = useState(true);
+
   // Delivery charge
-  const [addDeliveryCharge, setAddDeliveryCharge] = useState(false);
-  const [deliveryCharge, setDeliveryCharge] = useState("99");
+  const [addDeliveryCharge, setAddDeliveryCharge] = useState(true); // default checked
+  const [deliveryCharge, setDeliveryCharge] = useState("1000"); // default standard delivery
 
   // Address
   const [line1, setLine1] = useState("");
@@ -105,6 +108,7 @@ export function PaymentLinkModal({
       setDescription("");
       setAmount("");
       setPlanType("custom");
+      setDeliveryCharge("1000"); // Default standard delivery fee
     } else {
       const item = catalogItems.find((i) => i.id === itemId);
       if (item) {
@@ -113,20 +117,53 @@ export function PaymentLinkModal({
         
         // Match planType dynamically based on name keywords
         const lowerName = String(item.name).toLowerCase();
-        if (lowerName.includes("lite")) setPlanType("lite");
-        else if (lowerName.includes("standard")) setPlanType("standard");
-        else if (lowerName.includes("elite")) setPlanType("elite");
-        else if (lowerName.includes("7 day") || lowerName.includes("week")) setPlanType("7_days");
-        else if (lowerName.includes("monthly")) setPlanType("monthly");
-        else setPlanType("custom");
+        let plan = "custom";
+        if (lowerName.includes("lite")) plan = "lite";
+        else if (lowerName.includes("standard")) plan = "standard";
+        else if (lowerName.includes("elite")) plan = "elite";
+        else if (lowerName.includes("7 day") || lowerName.includes("week")) plan = "7_days";
+        else if (lowerName.includes("monthly")) plan = "monthly";
+        
+        setPlanType(plan);
+
+        // Autofill delivery fee based on plan
+        if (plan === "elite") {
+          setDeliveryCharge("1300");
+        } else {
+          setDeliveryCharge("1000");
+        }
+        setAddDeliveryCharge(true);
       }
     }
   };
+
+  // Live breakdown calculation
+  const mealBase = Number(amount) || 0;
+  const discountVal = Number(discount) || 0;
+  const netMealPrice = Math.max(0, mealBase - discountVal);
+  
+  // 5% GST on food (split as 2.5% CGST + 2.5% SGST)
+  const mealCgst = applyGst ? Number((netMealPrice * 0.025).toFixed(2)) : 0;
+  const mealSgst = applyGst ? Number((netMealPrice * 0.025).toFixed(2)) : 0;
+  const totalMealTax = mealCgst + mealSgst;
+  
+  const deliveryBase = addDeliveryCharge ? (Number(deliveryCharge) || 0) : 0;
+  
+  // 18% GST on delivery (split as 9% CGST + 9% SGST)
+  const deliveryCgst = (applyGst && deliveryBase > 0) ? Number((deliveryBase * 0.09).toFixed(2)) : 0;
+  const deliverySgst = (applyGst && deliveryBase > 0) ? Number((deliveryBase * 0.09).toFixed(2)) : 0;
+  const totalDeliveryTax = deliveryCgst + deliverySgst;
+  
+  const grandTotalPayable = netMealPrice + totalMealTax + deliveryBase + totalDeliveryTax;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!amount || Number(amount) <= 0) {
       toast.error("Please enter a valid amount");
+      return;
+    }
+    if (discountVal > mealBase) {
+      toast.error("Discount cannot be greater than the meal price");
       return;
     }
     if (!line1.trim()) {
@@ -148,6 +185,8 @@ export function PaymentLinkModal({
         description: description.trim() || "Meals Subscription",
         planType,
         amount: Number(amount),
+        discount: discountVal > 0 ? discountVal : undefined,
+        applyGst,
         deliveryCharge: addDeliveryCharge ? Number(deliveryCharge) : undefined,
         issueDate: issueDate || undefined,
         expiryDate: expiryDate || undefined,
@@ -214,7 +253,7 @@ export function PaymentLinkModal({
     >
       <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-gray-900 overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-250 px-5 py-4 dark:border-gray-800 shrink-0">
+        <div className="flex items-center justify-between border-b border-gray-255 px-5 py-4 dark:border-gray-800 shrink-0">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white">
               Create & Issue Tax Invoice
@@ -257,15 +296,13 @@ export function PaymentLinkModal({
                 <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   Issue Date
                 </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    value={issueDate}
-                    onChange={(e) => setIssueDate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
-                  />
-                </div>
+                <input
+                  type="date"
+                  required
+                  value={issueDate}
+                  onChange={(e) => setIssueDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                />
               </div>
 
               <div>
@@ -285,27 +322,53 @@ export function PaymentLinkModal({
             <hr className="border-gray-200 dark:border-gray-800" />
 
             {/* Catalog Items Selection */}
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                Razorpay Catalog Item
-              </label>
-              <select
-                value={selectedItemId}
-                onChange={(e) => handleItemChange(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
-              >
-                <option value="custom">✍️ Manual / Custom Item Entry</option>
-                {catalogItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} (₹{item.amount / 100})
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={selectedItemId === "custom" ? "sm:col-span-1" : "sm:col-span-2"}>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                  Razorpay Catalog Item
+                </label>
+                <select
+                  value={selectedItemId}
+                  onChange={(e) => handleItemChange(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                >
+                  <option value="custom">✍️ Manual / Custom Item Entry</option>
+                  {catalogItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} (₹{item.amount / 100})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedItemId === "custom" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                    Plan Category
+                  </label>
+                  <select
+                    value={planType}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPlanType(val);
+                      if (val === "elite") {
+                        setDeliveryCharge("1300");
+                      } else {
+                        setDeliveryCharge("1000");
+                      }
+                    }}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  >
+                    <option value="custom">Standard / Custom Meal Plan</option>
+                    <option value="elite">Elite Meal Plan</option>
+                  </select>
+                </div>
+              )}
             </div>
 
-            {/* Description & Cost */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
+            {/* Description, Cost & Discount */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="sm:col-span-1">
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
                   Item Description
                 </label>
@@ -316,13 +379,13 @@ export function PaymentLinkModal({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   disabled={selectedItemId !== "custom"}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500 text-ellipsis"
                 />
               </div>
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                  Rate / Item (₹)
+                  Rate / Price (₹)
                 </label>
                 <div className="relative">
                   <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -339,19 +402,49 @@ export function PaymentLinkModal({
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                  Discount (₹)
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-green-600">-</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    placeholder="0"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-7 pr-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none focus:ring-1 focus:ring-red-500 font-semibold text-green-600"
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Add delivery charges */}
+            {/* Delivery Charges Control */}
             <div className="p-3 bg-gray-50 dark:bg-gray-950/40 rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={addDeliveryCharge}
-                  onChange={(e) => setAddDeliveryCharge(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-[#E31E24] focus:ring-[#E31E24]"
-                />
-                Include Delivery Charges
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={addDeliveryCharge}
+                    onChange={(e) => setAddDeliveryCharge(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#E31E24] focus:ring-[#E31E24]"
+                  />
+                  Include Delivery Charges
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={applyGst}
+                    onChange={(e) => setApplyGst(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[#E31E24] focus:ring-[#E31E24]"
+                  />
+                  Apply GST (Meals & Delivery)
+                </label>
+              </div>
 
               {addDeliveryCharge && (
                 <div className="flex items-center gap-3">
@@ -359,16 +452,77 @@ export function PaymentLinkModal({
                     <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                     <input
                       type="number"
-                      placeholder="99"
+                      placeholder="1000"
                       required
                       value={deliveryCharge}
                       onChange={(e) => setDeliveryCharge(e.target.value)}
                       className="w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-2.5 text-xs dark:border-gray-700 dark:bg-gray-950 dark:text-white outline-none"
                     />
                   </div>
-                  <span className="text-[10px] text-gray-500">Will be billed as a secondary line item on the invoice.</span>
+                  <span className="text-[10px] text-gray-500">
+                    Base charge. GST (18%) is computed on top of this.
+                  </span>
                 </div>
               )}
+            </div>
+
+            {/* LIVE BREAKDOWN CARD */}
+            <div className="p-4 bg-gray-50 dark:bg-gray-950/60 rounded-xl border border-gray-200 dark:border-gray-800 space-y-2.5 text-xs">
+              <div className="font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[10px]">
+                Live Invoice Receipt Breakdown
+              </div>
+              <div className="space-y-1.5 font-medium text-gray-600 dark:text-gray-400">
+                <div className="flex justify-between">
+                  <span>Base Meal Price:</span>
+                  <span className="text-gray-900 dark:text-white">₹{mealBase.toLocaleString()}</span>
+                </div>
+                {discountVal > 0 && (
+                  <div className="flex justify-between text-green-600 dark:text-green-400 font-semibold">
+                    <span>Applied Discount:</span>
+                    <span>-₹{discountVal.toLocaleString()}</span>
+                  </div>
+                )}
+                {discountVal > 0 && (
+                  <div className="flex justify-between font-bold border-b border-dashed border-gray-200 dark:border-gray-800 pb-1.5">
+                    <span>Net Meal Price:</span>
+                    <span className="text-gray-900 dark:text-white">₹{netMealPrice.toLocaleString()}</span>
+                  </div>
+                )}
+                {applyGst && netMealPrice > 0 && (
+                  <>
+                    <div className="flex justify-between text-[11px] pl-2">
+                      <span>Meal CGST (2.5%):</span>
+                      <span>₹{mealCgst.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-200 dark:border-gray-800 pb-1.5">
+                      <span>Meal SGST (2.5%):</span>
+                      <span>₹{mealSgst.toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
+                {deliveryBase > 0 && (
+                  <div className="flex justify-between pt-1">
+                    <span>Base Delivery Charge:</span>
+                    <span className="text-gray-900 dark:text-white">₹{deliveryBase.toLocaleString()}</span>
+                  </div>
+                )}
+                {applyGst && deliveryBase > 0 && (
+                  <>
+                    <div className="flex justify-between text-[11px] pl-2">
+                      <span>Delivery CGST (9%):</span>
+                      <span>₹{deliveryCgst.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-200 dark:border-gray-800 pb-1.5">
+                      <span>Delivery SGST (9%):</span>
+                      <span>₹{deliverySgst.toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between text-sm font-bold text-gray-900 dark:text-white pt-1">
+                  <span>Total Payable Amount:</span>
+                  <span className="text-[#E31E24] text-base">₹{grandTotalPayable.toLocaleString()}</span>
+                </div>
+              </div>
             </div>
 
             <hr className="border-gray-200 dark:border-gray-800" />

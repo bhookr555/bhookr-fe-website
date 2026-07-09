@@ -546,6 +546,8 @@ export interface CreateRazorpayInvoiceRequest {
   description: string;
   planType: string;
   amount: number;
+  discount?: number;
+  applyGst?: boolean;
   deliveryCharge?: number;
   issueDate?: string;
   expiryDate?: string;
@@ -607,22 +609,31 @@ export async function createRazorpayInvoice(
       }
     }
 
-    const lineItems = [
+    const baseMealAmount = request.amount - (request.discount || 0);
+    const lineItems: any[] = [
       {
         name: request.description,
-        amount: Math.round(request.amount * 100), // in paise
+        amount: Math.round(baseMealAmount * 100), // in paise
         currency: 'INR',
         quantity: 1,
       }
     ];
 
+    if (request.applyGst) {
+      lineItems[0].tax_rate = "5.00";
+    }
+
     if (request.deliveryCharge && request.deliveryCharge > 0) {
-      lineItems.push({
+      const deliveryItem: any = {
         name: "Delivery Charges",
         amount: Math.round(request.deliveryCharge * 100), // in paise
         currency: 'INR',
         quantity: 1,
-      });
+      };
+      if (request.applyGst) {
+        deliveryItem.tax_rate = "18.00";
+      }
+      lineItems.push(deliveryItem);
     }
 
     const options: any = {
