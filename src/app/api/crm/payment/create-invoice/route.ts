@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       };
 
       if (item.taxRate > 0) {
-        rzpItem.tax_rate = String(item.taxRate) + ".00";
+        rzpItem.tax_rate = String(Math.round(item.taxRate));
       }
 
       return rzpItem;

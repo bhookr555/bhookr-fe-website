@@ -178,8 +178,12 @@ export function PaymentLinkModal({
       otherSgst += sgst;
     }
   });
+
+  const totalMealTax = Number((mealCgst + mealSgst).toFixed(2));
+  const totalDeliveryTax = Number((deliveryCgst + deliverySgst).toFixed(2));
+  const totalOtherTax = Number((otherCgst + otherSgst).toFixed(2));
   
-  const grandTotalPayable = mealBase + mealCgst + mealSgst + deliveryBase + deliveryCgst + deliverySgst + otherBase + otherCgst + otherSgst;
+  const grandTotalPayable = mealBase + totalMealTax + deliveryBase + totalDeliveryTax + otherBase + totalOtherTax;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -473,17 +477,11 @@ export function PaymentLinkModal({
                     <span className="text-gray-900 dark:text-white">₹{mealBase.toLocaleString()}</span>
                   </div>
                 )}
-                {mealCgst > 0 && (
-                  <>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Meal CGST (2.5%):</span>
-                      <span>₹{mealCgst.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-250 dark:border-gray-800 pb-1.5">
-                      <span>Meal SGST (2.5%):</span>
-                      <span>₹{mealSgst.toLocaleString()}</span>
-                    </div>
-                  </>
+                {totalMealTax > 0 && (
+                  <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-250 dark:border-gray-800 pb-1.5 font-semibold text-gray-500">
+                    <span>Meal GST (5%):</span>
+                    <span>₹{totalMealTax.toLocaleString()}</span>
+                  </div>
                 )}
 
                 {/* Delivery Charge */}
@@ -493,17 +491,11 @@ export function PaymentLinkModal({
                     <span className="text-gray-900 dark:text-white">₹{deliveryBase.toLocaleString()}</span>
                   </div>
                 )}
-                {deliveryCgst > 0 && (
-                  <>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Delivery CGST (9%):</span>
-                      <span>₹{deliveryCgst.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-250 dark:border-gray-800 pb-1.5">
-                      <span>Delivery SGST (9%):</span>
-                      <span>₹{deliverySgst.toLocaleString()}</span>
-                    </div>
-                  </>
+                {totalDeliveryTax > 0 && (
+                  <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-250 dark:border-gray-800 pb-1.5 font-semibold text-gray-500">
+                    <span>Delivery GST (18%):</span>
+                    <span>₹{totalDeliveryTax.toLocaleString()}</span>
+                  </div>
                 )}
 
                 {/* Other Custom Items */}
@@ -513,17 +505,11 @@ export function PaymentLinkModal({
                     <span className="text-gray-900 dark:text-white">₹{otherBase.toLocaleString()}</span>
                   </div>
                 )}
-                {otherCgst > 0 && (
-                  <>
-                    <div className="flex justify-between text-[11px] pl-2">
-                      <span>Custom Items CGST:</span>
-                      <span>₹{otherCgst.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-250 dark:border-gray-800 pb-1.5">
-                      <span>Custom Items SGST:</span>
-                      <span>₹{otherSgst.toLocaleString()}</span>
-                    </div>
-                  </>
+                {totalOtherTax > 0 && (
+                  <div className="flex justify-between text-[11px] pl-2 border-b border-dashed border-gray-250 dark:border-gray-800 pb-1.5 font-semibold text-gray-500">
+                    <span>Custom Items GST:</span>
+                    <span>₹{totalOtherTax.toLocaleString()}</span>
+                  </div>
                 )}
 
                 {/* Total */}
