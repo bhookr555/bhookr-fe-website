@@ -19,7 +19,8 @@ export type CrmModule =
   | "billing"
   | "inventory"
   | "analytics"
-  | "settings";
+  | "settings"
+  | "report";
 
 export interface ModuleMeta {
   id: CrmModule;
@@ -38,6 +39,7 @@ export const CRM_MODULES: ModuleMeta[] = [
   { id: "inventory", label: "Inventory" },
   { id: "analytics", label: "Analytics" },
   { id: "settings", label: "Settings" },
+  { id: "report", label: "Project Report" },
 ];
 
 export type PermissionMatrix = Record<CrmRole, Record<CrmModule, PermissionLevel>>;
@@ -59,6 +61,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     inventory: "write",
     analytics: "write",
     settings: "write",
+    report: "write",
   },
   auditor: {
     dashboard: "read",
@@ -72,6 +75,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     inventory: "read",
     analytics: "read",
     settings: "read",
+    report: "read",
   },
   manager: {
     dashboard: "read",
@@ -85,6 +89,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     inventory: "write",
     analytics: "read",
     settings: "none",
+    report: "read",
   },
   telecaller: {
     dashboard: "read",
@@ -98,6 +103,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     inventory: "none",
     analytics: "none",
     settings: "none",
+    report: "read",
   },
 };
 

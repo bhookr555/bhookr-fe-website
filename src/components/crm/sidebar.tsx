@@ -16,6 +16,7 @@ import {
   LineChart,
   Settings,
   Eye,
+  FileText,
 } from "lucide-react";
 import type { CrmRole } from "@/lib/crm/auth";
 import {
@@ -46,6 +47,7 @@ const NAV_ITEMS: NavItem[] = [
   { moduleId: "inventory", label: "Inventory", href: "/crm/inventory", icon: Boxes, built: false },
   { moduleId: "analytics", label: "Analytics", href: "/crm/analytics", icon: LineChart, built: true },
   { moduleId: "settings", label: "Settings", href: "/crm/settings", icon: Settings, built: true },
+  { moduleId: "report", label: "Project Report", href: "/crm/report", icon: FileText, built: true },
 ];
 
 interface CrmSidebarProps {
