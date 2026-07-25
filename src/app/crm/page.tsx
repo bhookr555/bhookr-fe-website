@@ -21,7 +21,7 @@ export default function CrmLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const forceBypass = true; // Force local bypass mode even in production
+  const forceBypass = false; // Disable local bypass mode
 
   // If already logged in, redirect directly to dashboard
   useEffect(() => {
