@@ -93,6 +93,13 @@ export default function SubscriptionPage() {
     });
     
     try {
+      // Read UTM parameters from URL (if any)
+      const urlParams = new URLSearchParams(window.location.search);
+      const utms = {
+        source: urlParams.get('utm_source'),
+        subSource: urlParams.get('utm_sub_source')
+      };
+
       // Convert form data to lead format
       const leadData = convertToLeadData({
         personalInfo: formData.personalInfo,
@@ -102,7 +109,7 @@ export default function SubscriptionPage() {
         foodPreferenceSelection: formData.foodPreferenceSelection,
         activityAndDuration: formData.activityAndDuration,
         planSelection: data, // Use the newly submitted data
-      });
+      }, utms);
 
       console.log('🔄 Converted lead data:', leadData);
       console.log('🍽️ Selected meals:', leadData.plan);
@@ -158,8 +165,14 @@ export default function SubscriptionPage() {
 
   // Submit partial lead using existing convertToLeadData helper
   try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const utms = {
+      source: urlParams.get('utm_source'),
+      subSource: urlParams.get('utm_sub_source')
+    };
+
     await submitLead({
-      ...convertToLeadData({ personalInfo: updatedData }),
+      ...convertToLeadData({ personalInfo: updatedData }, utms),
       status: 'partial_lead',
       lastStepCompleted: 1,
       checkoutVisited: false,

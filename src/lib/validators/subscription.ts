@@ -125,7 +125,7 @@ function getPlanMeals(planType: string): string[] {
 }
 
 // Helper: Convert form data to Google Sheets format
-export function convertToLeadData(formData: any): {
+export function convertToLeadData(formData: any, utms?: { source: string | null; subSource: string | null }): {
   name: string;
   email: string;
   phoneNumber: string;
@@ -140,6 +140,8 @@ export function convertToLeadData(formData: any): {
   subscriptionType: string;
   plan: string[];
   subscriptionStartDate: string;
+  utmSource?: string;
+  utmSubSource?: string;
 } {
   // Use actual selected meals if available, otherwise fallback to plan type conversion
   const selectedMeals = formData.planSelection?.selectedMeals;
@@ -167,6 +169,8 @@ export function convertToLeadData(formData: any): {
          ? formData.planSelection.startDate 
          : formData.planSelection.startDate.toISOString().split('T')[0])
       : '',
+    utmSource: utms?.source || undefined,
+    utmSubSource: utms?.subSource || undefined,
   };
 }
 

@@ -22,6 +22,8 @@ export interface LeadRow {
   status: string;
   lastStepCompleted: number | string;
   checkoutVisited: boolean | string;
+  utmSource?: string;
+  utmSubSource?: string;
 }
 
 export interface LeadsApiResponse {
@@ -36,6 +38,8 @@ export const LEAD_COLUMNS: { key: keyof LeadRow; label: string; width?: string }
   { key: "name", label: "Name", width: "160px" },
   { key: "email", label: "Email", width: "220px" },
   { key: "phoneNumber", label: "Phone", width: "140px" },
+  { key: "utmSource", label: "Source", width: "100px" },
+  { key: "utmSubSource", label: "Sub Source", width: "130px" },
   { key: "age", label: "Age", width: "70px" },
   { key: "gender", label: "Gender", width: "100px" },
   { key: "height", label: "Height", width: "90px" },

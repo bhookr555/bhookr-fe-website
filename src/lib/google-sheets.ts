@@ -22,6 +22,8 @@ export interface LeadData {
   status?: string;
   lastStepCompleted?: number;
   checkoutVisited?: boolean;
+  utmSource?: string;
+  utmSubSource?: string;
 }
 
 export interface SubscriptionData extends LeadData {
