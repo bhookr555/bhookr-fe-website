@@ -430,13 +430,15 @@ export default function CrmLeadsPage() {
                       ))}
                       <td className="sticky right-0 border-b border-gray-100 bg-white px-3 py-2 text-right dark:border-gray-800 dark:bg-gray-900">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Link
-                            href="/crm/billing"
+                          <a
+                            href="https://dashboard.razorpay.com/app/invoices"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                            title="View Invoices"
+                            title="Open Razorpay Invoices Dashboard"
                           >
                             💳 Invoice
-                          </Link>
+                          </a>
                           <Link
                             href={href}
                             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[#E31E24] hover:bg-red-50 dark:hover:bg-red-950/30"
