@@ -24,6 +24,8 @@ export interface LeadRow {
   checkoutVisited: boolean | string;
   utmSource?: string;
   utmSubSource?: string;
+  foodLove?: string;
+  leadSource?: "website" | "client_form";
 }
 
 export interface LeadsApiResponse {

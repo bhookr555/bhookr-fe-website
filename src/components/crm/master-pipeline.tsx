@@ -89,24 +89,41 @@ export function MasterPipeline() {
     name: string;
   } | null>(null);
 
+  type LeadSourceFilter = "all" | "website" | "client_form";
+  const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>("all");
+
   const fetchAll = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
       const leadsUrl = force ? "/api/crm/leads?refresh=true" : "/api/crm/leads";
+      const clientFormUrl = force ? "/api/crm/client-form?refresh=true" : "/api/crm/client-form";
       const subsUrl = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
 
-      const [leadsRes, subsRes, pipelineData] = await Promise.all([
+      const [leadsRes, clientFormRes, subsRes, pipelineData] = await Promise.all([
         fetch(leadsUrl, { cache: "no-store" }),
+        fetch(clientFormUrl, { cache: "no-store" }).catch(() => null),
         fetch(subsUrl, { cache: "no-store" }),
         fetchPipelineApi(),
       ]);
+
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
+      const clientFormData = clientFormRes && clientFormRes.ok ? await clientFormRes.json() : null;
       const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
+
       if (!leadsRes.ok || !leadsData.success) {
         throw new Error(leadsData.error || "Leads request failed");
       }
-      setLeads(Array.isArray(leadsData.rows) ? leadsData.rows : []);
+
+      const websiteRows: LeadRow[] = Array.isArray(leadsData.rows)
+        ? leadsData.rows.map((r) => ({ ...r, leadSource: "website" }))
+        : [];
+
+      const clientFormRows: LeadRow[] = clientFormData && clientFormData.success && Array.isArray(clientFormData.rows)
+        ? clientFormData.rows.map((r: any) => ({ ...r, leadSource: "client_form" }))
+        : [];
+
+      setLeads([...websiteRows, ...clientFormRows]);
       setSubs(subsData.success && Array.isArray(subsData.rows) ? subsData.rows : []);
       setPipeline(pipelineData);
       setLastUpdated(new Date());
@@ -196,6 +213,7 @@ export function MasterPipeline() {
 
   const visible = useMemo(() => {
     const matching = dateFilteredLeads.filter((a) => {
+      if (sourceFilter !== "all" && (a.lead.leadSource || "website") !== sourceFilter) return false;
       if (filter !== "all" && a.status !== filter) return false;
       if (search.trim()) {
         const haystack = [a.lead.name, a.lead.email, a.lead.phoneNumber]
@@ -218,7 +236,7 @@ export function MasterPipeline() {
       );
     }
     return sorted;
-  }, [dateFilteredLeads, filter, search, sortBy]);
+  }, [dateFilteredLeads, filter, search, sortBy, sourceFilter]);
 
   const handleStatusChange = async (email: string, name: string, newStatus: PipelineStatus) => {
     if (!role) return;
@@ -588,6 +606,48 @@ export function MasterPipeline() {
         </div>
       )}
 
+      {/* Lead Source Switcher */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+          Source:
+        </span>
+        <div className="inline-flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+          <button
+            type="button"
+            onClick={() => setSourceFilter("all")}
+            className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+              sourceFilter === "all"
+                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-900 dark:text-white"
+                : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+            }`}
+          >
+            📂 All Sources
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceFilter("website")}
+            className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+              sourceFilter === "website"
+                ? "bg-white text-blue-700 shadow-sm dark:bg-gray-900 dark:text-blue-400"
+                : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+            }`}
+          >
+            🌐 Website Leads
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceFilter("client_form")}
+            className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+              sourceFilter === "client_form"
+                ? "bg-white text-purple-700 shadow-sm dark:bg-gray-900 dark:text-purple-400"
+                : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+            }`}
+          >
+            📑 Client Form
+          </button>
+        </div>
+      </div>
+
       {/* Filter chips */}
       <div className="mt-4 flex flex-wrap gap-1.5">
         <FilterChip
@@ -726,12 +786,23 @@ export function MasterPipeline() {
                   >
                     <Td className="text-xs text-gray-400">{idx + 1}</Td>
                     <Td>
-                      <Link
-                        href={href}
-                        className="font-medium text-gray-900 hover:text-[#E31E24] hover:underline dark:text-white"
-                      >
-                        {a.lead.name || "—"}
-                      </Link>
+                      <div className="flex flex-col gap-0.5">
+                        <Link
+                          href={href}
+                          className="font-medium text-gray-900 hover:text-[#E31E24] hover:underline dark:text-white"
+                        >
+                          {a.lead.name || "—"}
+                        </Link>
+                        {a.lead.leadSource === "client_form" ? (
+                          <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-1.5 py-0.2 text-[10px] font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                            📑 Client Form
+                          </span>
+                        ) : (
+                          <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.2 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                            🌐 Website Lead
+                          </span>
+                        )}
+                      </div>
                     </Td>
                     <Td>
                       <div className="text-xs text-gray-600 dark:text-gray-300">

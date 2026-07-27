@@ -106,16 +106,27 @@ export default function LeadDetailPage() {
     setError(null);
     try {
       const leadsUrl = force ? "/api/crm/leads?refresh=true" : "/api/crm/leads";
+      const clientFormUrl = force ? "/api/crm/client-form?refresh=true" : "/api/crm/client-form";
       const subsUrl = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
 
-      const [leadsRes, subsRes, pipelineData] = await Promise.all([
+      const [leadsRes, clientFormRes, subsRes, pipelineData] = await Promise.all([
         fetch(leadsUrl, { cache: "no-store" }),
+        fetch(clientFormUrl, { cache: "no-store" }).catch(() => null),
         fetch(subsUrl, { cache: "no-store" }),
         fetchPipelineApi(),
       ]);
       const leadsData = (await leadsRes.json()) as LeadsApiResponse;
+      const clientFormData = clientFormRes && clientFormRes.ok ? await clientFormRes.json() : null;
       const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
-      const allLeads = leadsData.success ? leadsData.rows : [];
+
+      const websiteLeads = leadsData.success && Array.isArray(leadsData.rows)
+        ? leadsData.rows.map((r) => ({ ...r, leadSource: "website" as const }))
+        : [];
+      const clientFormLeads = clientFormData && clientFormData.success && Array.isArray(clientFormData.rows)
+        ? clientFormData.rows.map((r: any) => ({ ...r, leadSource: "client_form" as const }))
+        : [];
+
+      const allLeads = [...websiteLeads, ...clientFormLeads];
       const allSubs = subsData.success ? subsData.rows : [];
 
       const foundLead =
@@ -236,6 +247,15 @@ export default function LeadDetailPage() {
               <span>{effMeta.icon}</span>
               {effMeta.label}
             </span>
+            {lead.leadSource === "client_form" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800 dark:bg-purple-950/50 dark:text-purple-300">
+                📑 Client Form
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950/50 dark:text-blue-300">
+                🌐 Website Lead
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Lead since {formatTimestamp(lead.timestamp)} · Step{" "}
@@ -401,6 +421,7 @@ export default function LeadDetailPage() {
         <Field label="Goal" value={humanize(lead.goal)} />
         <Field label="Diet" value={humanize(lead.diet)} />
         <Field label="Food preference" value={humanize(lead.foodPreference)} />
+        {lead.foodLove && <Field label="Food favorites" value={lead.foodLove} />}
       </SectionCard>
 
       <SectionCard title="Plan interest">
