@@ -12,6 +12,7 @@ export type CrmModule =
   | "dashboard"
   | "leads"
   | "customers"
+  | "renewals"
   | "subscriptions"
   | "orders"
   | "locations"
@@ -28,9 +29,10 @@ export interface ModuleMeta {
 }
 
 export const CRM_MODULES: ModuleMeta[] = [
-  { id: "dashboard", label: "Dashboard" },
+  { id: "dashboard", label: "Sales Dashboard" },
+  { id: "customers", label: "Active Customers" },
+  { id: "renewals", label: "Renewals" },
   { id: "leads", label: "Leads" },
-  { id: "customers", label: "Customers" },
   { id: "subscriptions", label: "Subscriptions" },
   { id: "orders", label: "Orders" },
   { id: "locations", label: "Locations" },
@@ -53,6 +55,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     dashboard: "write",
     leads: "write",
     customers: "write",
+    renewals: "write",
     subscriptions: "write",
     orders: "write",
     locations: "write",
@@ -67,6 +70,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     dashboard: "read",
     leads: "read",
     customers: "read",
+    renewals: "read",
     subscriptions: "read",
     orders: "read",
     locations: "read",
@@ -81,6 +85,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     dashboard: "read",
     leads: "write",
     customers: "write",
+    renewals: "write",
     subscriptions: "write",
     orders: "write",
     locations: "read",
@@ -95,6 +100,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     dashboard: "read",
     leads: "write",
     customers: "read",
+    renewals: "write",
     subscriptions: "none",
     orders: "read",
     locations: "none",

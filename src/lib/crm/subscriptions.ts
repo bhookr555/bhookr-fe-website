@@ -19,6 +19,7 @@ export interface SubscriptionRow {
   subscriptionType: string;
   plan: string;
   subscriptionStartDate: string;
+  subscriptionEndDate?: string;
   deliveryFullName?: string;
   deliveryPhone?: string;
   deliveryAddress?: string;
@@ -136,4 +137,30 @@ export function formatINR(amount: number | string | null | undefined): string {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+export function getSubscriptionEndDate(sub: SubscriptionRow): Date {
+  if (sub.subscriptionEndDate) {
+    const parsed = new Date(sub.subscriptionEndDate);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const startStr = sub.subscriptionStartDate || sub.paymentTimestamp || sub.timestamp;
+  const start = startStr ? new Date(startStr) : new Date();
+  const validStart = Number.isNaN(start.getTime()) ? new Date() : start;
+
+  const type = String(sub.subscriptionType || "").toLowerCase();
+  const plan = String(sub.plan || "").toLowerCase();
+
+  let days = 30; // default monthly
+  if (type.includes("week") || plan.includes("7") || plan.includes("week")) {
+    days = 7;
+  } else if (type.includes("trial") || plan.includes("3") || plan.includes("trial")) {
+    days = 3;
+  } else if (type.includes("month") || plan.includes("30") || plan.includes("month")) {
+    days = 30;
+  }
+
+  const end = new Date(validStart);
+  end.setDate(end.getDate() + days);
+  return end;
 }

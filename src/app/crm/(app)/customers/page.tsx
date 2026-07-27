@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, Users, ShieldCheck, Utensils, IndianRupee } from "lucide-react";
 import {
   aggregateByCustomer,
   formatINR,
@@ -24,8 +24,8 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 const STATUS_OPTIONS = [
-  { value: "all", label: "All customers" },
-  { value: "active", label: "Active only" },
+  { value: "active", label: "Active Subscribers" },
+  { value: "all", label: "All Customers" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
 ];
@@ -40,21 +40,21 @@ function statusBadge(status: string): React.ReactNode {
   const s = String(status || "").toLowerCase();
   const styles: Record<string, string> = {
     active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
-    expired: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+    expired: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
     cancelled: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
   };
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${styles[s] ?? styles.expired}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${styles[s] ?? styles.expired}`}
     >
       {humanize(s) || "—"}
     </span>
   );
 }
 
-export default function CrmCustomersPage() {
+export default function CrmActiveCustomersDashboard() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [sortBy, setSortBy] = useState<SortBy>("recent");
 
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
@@ -76,7 +76,7 @@ export default function CrmCustomersPage() {
       setRows(Array.isArray(data.rows) ? data.rows : []);
       setLastUpdated(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load customers");
+      setError(err instanceof Error ? err.message : "Failed to load active customers");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -122,9 +122,9 @@ export default function CrmCustomersPage() {
     return sorted;
   }, [customers, search, statusFilter, sortBy]);
 
-  const totalRevenue = useMemo(
-    () => filtered.reduce((sum, c) => sum + c.totalSpent, 0),
-    [filtered]
+  const totalActiveRevenue = useMemo(
+    () => customers.filter(c => c.currentStatus.toLowerCase() === "active").reduce((sum, c) => sum + c.totalSpent, 0),
+    [customers]
   );
 
   const activeCount = useMemo(
@@ -133,18 +133,19 @@ export default function CrmCustomersPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-[#E31E24]">
-            Customers
+            Customer Management
           </p>
-          <h1 className="mt-0.5 text-2xl font-bold text-gray-900 dark:text-white">
-            {loading ? "Loading…" : `${filtered.length} of ${customers.length} customers`}
+          <h1 className="mt-0.5 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
+            Active Customers Dashboard
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              {activeCount} active · {formatINR(totalRevenue)} from current view · last updated{" "}
+              Tracking active meal subscribers, plans & delivery profiles · updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
@@ -159,18 +160,58 @@ export default function CrmCustomersPage() {
         </button>
       </div>
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Active Subscribers</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{loading ? "…" : activeCount}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Customer Base</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{loading ? "…" : customers.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+              <IndianRupee className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Active Revenue</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{loading ? "…" : formatINR(totalActiveRevenue)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {error && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <div className="text-sm">
             <p className="font-semibold text-red-900 dark:text-red-200">
-              Couldn&apos;t load customers
+              Couldn&apos;t load active customers
             </p>
             <p className="mt-0.5 text-red-800 dark:text-red-300/80">{error}</p>
           </div>
         </div>
       )}
 
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="search"
@@ -182,19 +223,20 @@ export default function CrmCustomersPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-900 dark:text-white"
         >
           {STATUS_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
         </select>
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as SortBy)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-900 dark:text-white"
         >
           {SORT_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>Sort: {opt.label}</option>))}
         </select>
       </div>
 
+      {/* Table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
@@ -210,14 +252,13 @@ export default function CrmCustomersPage() {
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "120px" }}>Total Spent</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "200px" }}>Latest Plan</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "150px" }}>Last Paid</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "150px" }}>First Paid</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">Loading customers…</td></tr>
+                <tr><td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">Loading active customers…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">
+                <tr><td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
                   {customers.length === 0 ? "No paying customers yet." : "No customers match your filters."}
                 </td></tr>
               ) : (
@@ -233,7 +274,6 @@ export default function CrmCustomersPage() {
                     <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right font-semibold text-gray-900 dark:border-gray-800 dark:text-white">{formatINR(c.totalSpent)}</td>
                     <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{humanize(c.latestPlan) || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                     <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{formatTimestamp(c.latestPaidAt)}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{formatTimestamp(c.firstPaidAt)}</td>
                   </tr>
                 ))
               )}
