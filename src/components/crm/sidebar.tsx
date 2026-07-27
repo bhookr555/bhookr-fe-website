@@ -40,7 +40,6 @@ const NAV_ITEMS: NavItem[] = [
   { moduleId: "dashboard", label: "Sales Dashboard", href: "/crm/dashboard", icon: LayoutDashboard, built: true },
   { moduleId: "customers", label: "Active Customers", href: "/crm/customers", icon: Utensils, built: true },
   { moduleId: "renewals", label: "Renewals", href: "/crm/renewals", icon: RotateCw, built: true },
-  { moduleId: "leads", label: "Leads", href: "/crm/leads", icon: Users, built: true },
   { moduleId: "subscriptions", label: "Subscriptions", href: "/crm/subscriptions", icon: Package, built: false },
   { moduleId: "orders", label: "Orders", href: "/crm/orders", icon: ShoppingBag, built: false },
   { moduleId: "locations", label: "Locations", href: "/crm/locations", icon: Map, built: false },

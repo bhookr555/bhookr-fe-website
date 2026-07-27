@@ -32,7 +32,6 @@ export const CRM_MODULES: ModuleMeta[] = [
   { id: "dashboard", label: "Sales Dashboard" },
   { id: "customers", label: "Active Customers" },
   { id: "renewals", label: "Renewals" },
-  { id: "leads", label: "Leads" },
   { id: "subscriptions", label: "Subscriptions" },
   { id: "orders", label: "Orders" },
   { id: "locations", label: "Locations" },
