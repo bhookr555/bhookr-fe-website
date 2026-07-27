@@ -455,8 +455,6 @@ export default function CrmLeadsPage() {
           </table>
         </div>
       </div>
-
-      )}
     </div>
   );
 }
