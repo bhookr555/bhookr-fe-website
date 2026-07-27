@@ -33,7 +33,6 @@ import {
 } from "@/lib/crm/pipeline";
 import { getCurrentRole, type CrmRole } from "@/lib/crm/auth";
 import { ConvertModal } from "@/components/crm/convert-modal";
-import { PaymentLinkModal } from "@/components/crm/payment-link-modal";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -88,12 +87,6 @@ export function MasterPipeline() {
   const [convertingLead, setConvertingLead] = useState<{
     email: string;
     name: string;
-  } | null>(null);
-
-  const [paymentLead, setPaymentLead] = useState<{
-    email: string;
-    name: string;
-    phone: string;
   } | null>(null);
 
   const fetchAll = useCallback(async (silent = false, force = false) => {
@@ -792,17 +785,15 @@ export function MasterPipeline() {
                     </Td>
                     <Td align="right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => setPaymentLead({
-                            email: emailKey,
-                            name: a.lead.name || "",
-                            phone: String(a.lead.phoneNumber || ""),
-                          })}
+                        <a
+                          href="https://dashboard.razorpay.com/app/invoices"
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                          title="Generate Razorpay Payment Link"
+                          title="Open Razorpay Invoices Dashboard"
                         >
-                          💳 Link
-                        </button>
+                          💳 Invoice
+                        </a>
                         <Link
                           href={href}
                           className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
@@ -830,15 +821,6 @@ export function MasterPipeline() {
               description: convertingLead.name || convertingLead.email,
             });
           }}
-        />
-      )}
-
-      {paymentLead && (
-        <PaymentLinkModal
-          email={paymentLead.email}
-          name={paymentLead.name}
-          phone={paymentLead.phone}
-          onClose={() => setPaymentLead(null)}
         />
       )}
     </section>
