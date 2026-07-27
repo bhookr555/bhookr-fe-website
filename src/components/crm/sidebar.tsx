@@ -43,7 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { moduleId: "orders", label: "Orders", href: "/crm/orders", icon: ShoppingBag, built: false },
   { moduleId: "locations", label: "Locations", href: "/crm/locations", icon: Map, built: false },
   { moduleId: "whatsapp", label: "WhatsApp", href: "/crm/whatsapp", icon: MessageCircle, built: false },
-  { moduleId: "billing", label: "Billing", href: "/crm/billing", icon: Receipt, built: false },
+  { moduleId: "billing", label: "Billing", href: "/crm/billing", icon: Receipt, built: true },
   { moduleId: "inventory", label: "Inventory", href: "/crm/inventory", icon: Boxes, built: false },
   { moduleId: "analytics", label: "Analytics", href: "/crm/analytics", icon: LineChart, built: false },
   { moduleId: "settings", label: "Settings", href: "/crm/settings", icon: Settings, built: true },
