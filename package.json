@@ -10,7 +10,8 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,scss,md}\"",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check && npm run lint",
-    "test:payment": "node test-razorpay.js"
+    "test:payment": "node test-razorpay.js",
+    "seed:user": "node scripts/create-crm-user.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
