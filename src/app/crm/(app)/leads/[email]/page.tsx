@@ -263,7 +263,7 @@ export default function LeadDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isAdmin && eff.source !== "online" && (
+          {role && role !== "auditor" && eff.source !== "online" && (
             <select
               value={eff.status}
               onChange={(e) => handleStatusChange(e.target.value as PipelineStatus)}

@@ -200,6 +200,7 @@ export function MasterPipeline() {
     const map: Record<PipelineStatus | "all", number> = {
       all: dateFilteredLeads.length,
       new: 0,
+      pending: 0,
       follow_up: 0,
       trial_requested: 0,
       hot_prospect: 0,
@@ -832,7 +833,7 @@ export function MasterPipeline() {
                             via Razorpay
                           </span>
                         ) : (
-                          role === "admin" && (
+                          role && role !== "auditor" && (
                             <select
                               value={a.status}
                               onChange={(e) =>

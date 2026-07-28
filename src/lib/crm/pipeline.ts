@@ -12,6 +12,7 @@ import type { CrmRole } from "@/lib/crm/auth";
 
 export type PipelineStatus =
   | "new"
+  | "pending"
   | "follow_up"
   | "trial_requested"
   | "hot_prospect"
@@ -54,6 +55,14 @@ export const PIPELINE_STATUSES: PipelineStatusMeta[] = [
     icon: "🆕",
     pill: "bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
     description: "Just came in — not yet contacted",
+  },
+  {
+    value: "pending",
+    label: "Pending follow-up",
+    shortLabel: "Pending",
+    icon: "⏳",
+    pill: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+    description: "Lead is pending follow-up or pending decision",
   },
   {
     value: "follow_up",

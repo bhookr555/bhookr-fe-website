@@ -193,6 +193,7 @@ export default function CrmAnalyticsPage() {
   const pipelineStats = useMemo(() => {
     const counts: Record<string, number> = {
       new: 0,
+      pending: 0,
       follow_up: 0,
       trial_requested: 0,
       hot_prospect: 0,
@@ -205,6 +206,7 @@ export default function CrmAnalyticsPage() {
       counts[eff.status] = (counts[eff.status] ?? 0) + 1;
     }
     const inProgress =
+      (counts.pending ?? 0) +
       (counts.follow_up ?? 0) +
       (counts.trial_requested ?? 0) +
       (counts.hot_prospect ?? 0) +
@@ -453,6 +455,8 @@ export default function CrmAnalyticsPage() {
                     pill={
                       s.value === "new"
                         ? "bg-sky-500"
+                        : s.value === "pending"
+                        ? "bg-amber-500"
                         : s.value === "follow_up"
                         ? "bg-indigo-500"
                         : s.value === "trial_requested"
