@@ -6,9 +6,12 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   ArrowRight,
+  BarChart3,
   Calendar,
   ChevronDown,
   Download,
+  FileSpreadsheet,
+  FileText,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -33,6 +36,8 @@ import {
 } from "@/lib/crm/pipeline";
 import { getCurrentRole, type CrmRole } from "@/lib/crm/auth";
 import { ConvertModal } from "@/components/crm/convert-modal";
+import { ReportModal } from "@/components/crm/report-modal";
+import { type AnnotatedLead } from "@/lib/crm/report-generator";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -83,6 +88,8 @@ export function MasterPipeline() {
   const [todayStr, setTodayStr] = useState<string>("");
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportInitialMode, setReportInitialMode] = useState<"today" | "range">("today");
 
   const [convertingLead, setConvertingLead] = useState<{
     email: string;
@@ -561,11 +568,11 @@ export function MasterPipeline() {
           <div className="relative">
             <button
               onClick={() => setExportOpen(!exportOpen)}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E31E24]/30 bg-red-50/50 px-3.5 py-2 text-sm font-semibold text-[#E31E24] shadow-sm transition hover:bg-red-100/60 dark:border-[#E31E24]/40 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-900/40"
             >
-              <Download className="h-4 w-4" />
-              Export
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              <BarChart3 className="h-4 w-4" />
+              Reports & Export
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
             </button>
             
             {exportOpen && (
@@ -574,24 +581,39 @@ export function MasterPipeline() {
                   className="fixed inset-0 z-40" 
                   onClick={() => setExportOpen(false)}
                 />
-                <div className="absolute right-0 mt-1.5 w-44 origin-top-right rounded-xl border border-gray-200 bg-white p-1 shadow-lg ring-1 ring-black/5 focus:outline-none dark:border-gray-800 dark:bg-gray-950 z-50">
+                <div className="absolute right-0 mt-1.5 w-56 origin-top-right rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5 focus:outline-none dark:border-gray-800 dark:bg-gray-950 z-50">
+                  <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Lead Reports & Analytics
+                  </div>
+                  <button
+                    onClick={() => {
+                      setReportInitialMode("today");
+                      setReportModalOpen(true);
+                      setExportOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-semibold text-gray-800 hover:bg-red-50 hover:text-[#E31E24] dark:text-gray-200 dark:hover:bg-red-950/40"
+                  >
+                    ⚡ 1. Today Report
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportInitialMode("range");
+                      setReportModalOpen(true);
+                      setExportOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-semibold text-gray-800 hover:bg-red-50 hover:text-[#E31E24] dark:text-gray-200 dark:hover:bg-red-950/40"
+                  >
+                    📅 2. Date Range Report
+                  </button>
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                   <button
                     onClick={() => {
                       exportToCsv();
                       setExportOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
                   >
-                    📄 Export CSV (Excel)
-                  </button>
-                  <button
-                    onClick={() => {
-                      exportToPdf();
-                      setExportOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-                  >
-                    📕 Export PDF (Print)
+                    📄 Export Raw CSV (Excel)
                   </button>
                 </div>
               </>
@@ -893,6 +915,17 @@ export function MasterPipeline() {
               description: convertingLead.name || convertingLead.email,
             });
           }}
+        />
+      )}
+
+      {reportModalOpen && (
+        <ReportModal
+          isOpen={reportModalOpen}
+          onClose={() => setReportModalOpen(false)}
+          allAnnotatedLeads={annotatedLeads as AnnotatedLead[]}
+          todayStr={todayStr}
+          role={role}
+          initialMode={reportInitialMode}
         />
       )}
     </section>
