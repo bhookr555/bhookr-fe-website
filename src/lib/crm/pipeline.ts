@@ -329,3 +329,14 @@ export async function removePipelineEntryApi(email: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function saveLeadNoteApi(
+  email: string,
+  notes: string,
+  role: CrmRole,
+  currentStatus: PipelineStatus = "new"
+): Promise<boolean> {
+  setPipelineStatus(email, currentStatus, role, { notes });
+  return setPipelineStatusApi(email, currentStatus, role, { notes });
+}
+

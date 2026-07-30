@@ -12,6 +12,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  StickyNote,
   Trash2,
   TriangleAlert,
   User,
@@ -41,6 +42,7 @@ import {
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
 import { ConvertModal } from "@/components/crm/convert-modal";
+import { NoteModal } from "@/components/crm/note-modal";
 
 function Field({
   icon: Icon,
@@ -100,6 +102,7 @@ export default function LeadDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [convertOpen, setConvertOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   const fetchAll = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
@@ -263,6 +266,17 @@ export default function LeadDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setNoteOpen(true)}
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+              pipelineEntry?.notes
+                ? "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+            }`}
+          >
+            <StickyNote className="h-4 w-4" />
+            {pipelineEntry?.notes ? "Edit Notes" : "Add Notes"}
+          </button>
           {role && role !== "auditor" && eff.source !== "online" && (
             <select
               value={eff.status}
@@ -448,9 +462,38 @@ export default function LeadDetailPage() {
         <Field label="Sheet status" value={humanize(lead.status)} />
       </SectionCard>
 
+      {/* Telecaller Notes Card */}
+      <section className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-5 dark:border-amber-900/40 dark:bg-amber-950/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <StickyNote className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <h2 className="text-sm font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+              Telecaller & Staff Notes
+            </h2>
+          </div>
+          <button
+            onClick={() => setNoteOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100/50 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          >
+            {pipelineEntry?.notes ? "Edit Note" : "+ Add Note"}
+          </button>
+        </div>
+        <div className="mt-3">
+          {pipelineEntry?.notes ? (
+            <p className="whitespace-pre-wrap rounded-lg border border-amber-200/60 bg-white p-3 text-sm text-gray-800 dark:border-amber-900/40 dark:bg-gray-900 dark:text-gray-200">
+              {pipelineEntry.notes}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+              No notes written for this lead yet. Click &quot;Add Note&quot; to write call status, follow-up times, or customer requests.
+            </p>
+          )}
+        </div>
+      </section>
+
       <p className="text-xs text-gray-400">
         Read-only view of the sheet data. The Google Sheets are not modified by
-        anything on this page. Pipeline status + conversion marks are saved in the central CRM database.
+        anything on this page. Pipeline status + conversion marks + notes are saved in the central CRM database.
       </p>
 
       {convertOpen && (
@@ -459,6 +502,17 @@ export default function LeadDetailPage() {
           name={String(lead.name ?? "")}
           role={role}
           onClose={() => setConvertOpen(false)}
+        />
+      )}
+
+      {noteOpen && (
+        <NoteModal
+          isOpen={noteOpen}
+          email={email}
+          name={String(lead.name ?? "")}
+          initialNotes={pipelineEntry?.notes || ""}
+          currentStatus={eff.status}
+          onClose={() => setNoteOpen(false)}
         />
       )}
     </div>

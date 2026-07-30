@@ -8,6 +8,7 @@ import {
   Download,
   Plus,
   RefreshCw,
+  StickyNote,
 } from "lucide-react";
 import {
   LEAD_COLUMNS,
@@ -29,6 +30,7 @@ import {
   type PipelineMap,
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
+import { NoteModal } from "@/components/crm/note-modal";
 
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -136,6 +138,12 @@ export default function CrmLeadsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [noteModalLead, setNoteModalLead] = useState<{
+    email: string;
+    name?: string;
+    notes?: string;
+    status?: PipelineStatus;
+  } | null>(null);
 
   const fetchAll = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
@@ -430,6 +438,31 @@ export default function CrmLeadsPage() {
                       ))}
                       <td className="sticky right-0 border-b border-gray-100 bg-white px-3 py-2 text-right dark:border-gray-800 dark:bg-gray-900">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNoteModalLead({
+                                email: emailKey,
+                                name: String(row.name ?? ""),
+                                notes: pipeline[emailKey]?.notes || "",
+                                status: status,
+                              });
+                            }}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
+                              pipeline[emailKey]?.notes
+                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60"
+                                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                            }`}
+                            title={
+                              pipeline[emailKey]?.notes
+                                ? `Note: ${pipeline[emailKey]?.notes}`
+                                : "Add / Edit Note"
+                            }
+                          >
+                            <StickyNote className="h-3.5 w-3.5" />
+                            {pipeline[emailKey]?.notes ? "Note" : "Note"}
+                          </button>
                           <a
                             href="https://dashboard.razorpay.com/app/invoices"
                             target="_blank"
@@ -455,6 +488,17 @@ export default function CrmLeadsPage() {
           </table>
         </div>
       </div>
+
+      {noteModalLead && (
+        <NoteModal
+          isOpen={!!noteModalLead}
+          email={noteModalLead.email}
+          name={noteModalLead.name}
+          initialNotes={noteModalLead.notes}
+          currentStatus={noteModalLead.status}
+          onClose={() => setNoteModalLead(null)}
+        />
+      )}
     </div>
   );
 }

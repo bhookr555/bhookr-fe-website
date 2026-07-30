@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, RefreshCw, Users, ShieldCheck, Utensils, IndianRupee } from "lucide-react";
+import { AlertCircle, RefreshCw, Users, ShieldCheck, Utensils, IndianRupee, StickyNote } from "lucide-react";
 import {
   aggregateByCustomer,
   formatINR,
@@ -10,6 +10,8 @@ import {
   type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
 import { formatTimestamp, humanize } from "@/lib/crm/leads";
+import { fetchPipelineApi, PIPELINE_CHANGED_EVENT, type PipelineMap } from "@/lib/crm/pipeline";
+import { NoteModal } from "@/components/crm/note-modal";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -58,22 +60,32 @@ export default function CrmActiveCustomersDashboard() {
   const [sortBy, setSortBy] = useState<SortBy>("recent");
 
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
+  const [pipeline, setPipeline] = useState<PipelineMap>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [noteModalLead, setNoteModalLead] = useState<{
+    email: string;
+    name?: string;
+    notes?: string;
+  } | null>(null);
 
   const fetchData = useCallback(async (silent = false, force = false) => {
     if (!silent) setRefreshing(true);
     setError(null);
     try {
       const url = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
-      const res = await fetch(url, { cache: "no-store" });
+      const [res, pipelineData] = await Promise.all([
+        fetch(url, { cache: "no-store" }),
+        fetchPipelineApi(),
+      ]);
       const data = (await res.json()) as SubscriptionsApiResponse;
       if (!res.ok || !data.success) {
         throw new Error(data.error || `Request failed: ${res.status}`);
       }
       setRows(Array.isArray(data.rows) ? data.rows : []);
+      setPipeline(pipelineData);
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load active customers");
@@ -85,6 +97,11 @@ export default function CrmActiveCustomersDashboard() {
 
   useEffect(() => {
     fetchData();
+    const handler = () => {
+      fetchPipelineApi().then(setPipeline);
+    };
+    window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
   }, [fetchData]);
 
   useEffect(() => {
@@ -252,35 +269,71 @@ export default function CrmActiveCustomersDashboard() {
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "120px" }}>Total Spent</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "200px" }}>Latest Plan</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "150px" }}>Last Paid</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "100px" }}>Notes</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">Loading active customers…</td></tr>
+                <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">Loading active customers…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={10} className="px-3 py-12 text-center text-sm text-gray-500">
+                <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">
                   {customers.length === 0 ? "No paying customers yet." : "No customers match your filters."}
                 </td></tr>
               ) : (
-                filtered.map((c, idx) => (
-                  <tr key={c.email} className="odd:bg-white even:bg-gray-50 hover:bg-red-50/40 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-red-950/20">
-                    <td className="border-b border-gray-100 px-3 py-2 text-xs text-gray-400 dark:border-gray-800">{idx + 1}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white">{c.name || "—"}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.email}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.phoneNumber || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.city || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 dark:border-gray-800">{statusBadge(c.currentStatus)}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.subscriptionCount}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right font-semibold text-gray-900 dark:border-gray-800 dark:text-white">{formatINR(c.totalSpent)}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{humanize(c.latestPlan) || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
-                    <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{formatTimestamp(c.latestPaidAt)}</td>
-                  </tr>
-                ))
+                filtered.map((c, idx) => {
+                  const emailKey = c.email.toLowerCase().trim();
+                  const note = pipeline[emailKey]?.notes;
+                  return (
+                    <tr key={c.email} className="odd:bg-white even:bg-gray-50 hover:bg-red-50/40 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-red-950/20">
+                      <td className="border-b border-gray-100 px-3 py-2 text-xs text-gray-400 dark:border-gray-800">{idx + 1}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white">{c.name || "—"}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.email}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.phoneNumber || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.city || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 dark:border-gray-800">{statusBadge(c.currentStatus)}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.subscriptionCount}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right font-semibold text-gray-900 dark:border-gray-800 dark:text-white">{formatINR(c.totalSpent)}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{humanize(c.latestPlan) || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{formatTimestamp(c.latestPaidAt)}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNoteModalLead({
+                              email: c.email,
+                              name: c.name,
+                              notes: note || "",
+                            })
+                          }
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
+                            note
+                              ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60"
+                              : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                          }`}
+                          title={note ? `Note: ${note}` : "Add / Edit Note"}
+                        >
+                          <StickyNote className="h-3.5 w-3.5" />
+                          {note ? "Note" : "Note"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {noteModalLead && (
+        <NoteModal
+          isOpen={!!noteModalLead}
+          email={noteModalLead.email}
+          name={noteModalLead.name}
+          initialNotes={noteModalLead.notes}
+          onClose={() => setNoteModalLead(null)}
+        />
+      )}
     </div>
   );
 }
