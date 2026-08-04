@@ -85,26 +85,61 @@ async function fetchPipeline(): Promise<PipelineResponse> {
 // ── Primary Hook: all dashboard data ─────────────────────────────────────────
 
 /**
+ * Helper to safely read cached initial dashboard data from localStorage for 0ms render
+ */
+function getInitialDashboardData(): DashboardResponse | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = localStorage.getItem("bhookr_crm_dash_cache");
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    return parsed as DashboardResponse;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Helper to safely write dashboard data to localStorage
+ */
+function setInitialDashboardData(data: DashboardResponse) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("bhookr_crm_dash_cache", JSON.stringify(data));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+/**
  * The primary hook for all CRM data. All widgets mount this hook — React Query
  * deduplicates the fetch so only one network request is made regardless of how
  * many components mount simultaneously.
  *
+ * initialData: reads from localStorage → renders IMMEDIATELY on frame 1 (0ms)
  * placeholderData: keepPreviousData → when a forceRefresh is triggered, the old
  * data stays visible while the new fetch runs. No loading flash.
  */
 export function useDashboardData() {
-  return useQuery<DashboardResponse, Error>({
+  const query = useQuery<DashboardResponse, Error>({
     queryKey: CRM_QUERY_KEYS.dashboard,
-    queryFn: () => fetchDashboard(false),
-    staleTime: 2 * 60 * 1000,      // 2 min: serve from cache without network
-    gcTime: 10 * 60 * 1000,        // 10 min: keep in memory across navigations
-    refetchInterval: 5 * 60 * 1000, // 5 min: background refresh (replaces setInterval)
-    refetchIntervalInBackground: false, // Only refresh when tab is active
-    refetchOnWindowFocus: true,     // Refresh when staff returns to CRM tab
+    queryFn: async () => {
+      const data = await fetchDashboard(false);
+      setInitialDashboardData(data);
+      return data;
+    },
+    staleTime: 2 * 60 * 1000,       // 2 min: serve from cache without network
+    gcTime: 10 * 60 * 1000,         // 10 min: keep in memory across navigations
+    refetchInterval: 5 * 60 * 1000,  // 5 min: background refresh
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,      // Refresh when staff returns to CRM tab
     retry: 2,
     retryDelay: (i) => Math.min(1000 * 2 ** i, 10_000),
-    placeholderData: keepPreviousData, // No flash between refreshes
+    initialData: getInitialDashboardData, // 0ms INSTANT load from localStorage on frame 1
+    placeholderData: keepPreviousData,  // No flash between refreshes
   });
+
+  return query;
 }
 
 // ── Pipeline Hook ─────────────────────────────────────────────────────────────
