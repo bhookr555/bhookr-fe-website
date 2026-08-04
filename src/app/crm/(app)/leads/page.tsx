@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -15,25 +15,22 @@ import {
   formatTimestamp,
   humanize,
   type LeadRow,
-  type LeadsApiResponse,
 } from "@/lib/crm/leads";
 import {
   type SubscriptionRow,
-  type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
 import {
-  PIPELINE_CHANGED_EVENT,
   PIPELINE_STATUSES,
   effectiveStatus,
   getStatusMeta,
-  fetchPipelineApi,
-  type PipelineMap,
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
 import { NoteModal } from "@/components/crm/note-modal";
+import { useDashboardData, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
+import { PipelineTableSkeleton } from "@/components/crm/skeletons";
 
-
-const REFRESH_INTERVAL_MS = 60_000;
 
 const STATUS_FILTER_OPTIONS: { value: PipelineStatus | "all"; label: string }[] = [
   { value: "all", label: "All statuses" },
@@ -131,13 +128,20 @@ export default function CrmLeadsPage() {
   const [step7Only, setStep7Only] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
 
-  const [rows, setRows] = useState<LeadRow[]>([]);
-  const [subs, setSubs] = useState<SubscriptionRow[]>([]);
-  const [pipeline, setPipeline] = useState<PipelineMap>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const debouncedSearch = useDebounce(search, 300);
+
+  const {
+    data: dashData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+    dataUpdatedAt,
+  } = useDashboardData();
+
+  const { data: pipelineData } = usePipelineData();
+  const refreshMutation = useRefreshDashboard();
+
   const [noteModalLead, setNoteModalLead] = useState<{
     email: string;
     name?: string;
@@ -145,52 +149,25 @@ export default function CrmLeadsPage() {
     status?: PipelineStatus;
   } | null>(null);
 
-  const fetchAll = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const leadsUrl = force ? "/api/crm/leads?refresh=true" : "/api/crm/leads";
-      const subsUrl = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
+  const rows = useMemo<LeadRow[]>(() => {
+    if (!dashData) return [];
+    const websiteRows: LeadRow[] = Array.isArray(dashData.leads?.rows)
+      ? dashData.leads.rows.map((r) => ({ ...r, leadSource: "website" }))
+      : [];
+    const clientFormRows: LeadRow[] = Array.isArray(dashData.clientForm?.rows)
+      ? dashData.clientForm.rows.map((r: LeadRow) => ({ ...r, leadSource: "client_form" }))
+      : [];
+    return [...websiteRows, ...clientFormRows];
+  }, [dashData]);
 
-      const [leadsRes, subsRes, pipelineData] = await Promise.all([
-        fetch(leadsUrl, { cache: "no-store" }),
-        fetch(subsUrl, { cache: "no-store" }),
-        fetchPipelineApi(),
-      ]);
-      const leadsData = (await leadsRes.json()) as LeadsApiResponse;
-      const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
-      if (!leadsRes.ok || !leadsData.success) {
-        throw new Error(leadsData.error || `Leads request failed`);
-      }
-      setRows(Array.isArray(leadsData.rows) ? leadsData.rows : []);
-      setSubs(subsData.success && Array.isArray(subsData.rows) ? subsData.rows : []);
-      setPipeline(pipelineData);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load leads");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const subs = useMemo<SubscriptionRow[]>(() => {
+    if (!dashData?.subscriptions?.rows) return [];
+    return Array.isArray(dashData.subscriptions.rows) ? dashData.subscriptions.rows : [];
+  }, [dashData]);
 
-  useEffect(() => {
-    fetchAll();
-    const handler = () => {
-      fetchPipelineApi().then(setPipeline);
-    };
-    window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
-  }, [fetchAll]);
+  const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
+  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchAll(true);
-      }
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchAll]);
 
   const verifiedEmails = useMemo(() => {
     const set = new Set<string>();
@@ -213,12 +190,12 @@ export default function CrmLeadsPage() {
     const matching = annotated.filter(({ row, status }) => {
       if (step7Only && Number(row.lastStepCompleted) < 7) return false;
       if (statusFilter !== "all" && status !== statusFilter) return false;
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         const haystack = [row.name, row.email, row.phoneNumber]
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
-        if (!haystack.includes(search.trim().toLowerCase())) {
+        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) {
           return false;
         }
       }
@@ -236,7 +213,7 @@ export default function CrmLeadsPage() {
       );
     }
     return sorted;
-  }, [annotated, search, statusFilter, step7Only, sortBy]);
+  }, [annotated, debouncedSearch, statusFilter, step7Only, sortBy]);
 
   const verifiedCount = annotated.filter((a) => a.source === "online").length;
   const localCount = annotated.filter((a) => a.source === "local").length;
@@ -265,7 +242,12 @@ export default function CrmLeadsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => fetchAll(false, true)}
+            onClick={() =>
+              refreshMutation.mutate(undefined, {
+                onSuccess: () => toast.success("Leads refreshed"),
+                onError: () => toast.error("Refresh failed — using cached data"),
+              })
+            }
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -291,14 +273,14 @@ export default function CrmLeadsPage() {
         </div>
       </div>
 
-      {error && (
+      {isError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <div className="text-sm">
             <p className="font-semibold text-red-900 dark:text-red-200">
               Couldn&apos;t load leads
             </p>
-            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{error}</p>
+            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{dashError?.message}</p>
           </div>
         </div>
       )}
@@ -376,11 +358,8 @@ export default function CrmLeadsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td
-                    colSpan={LEAD_COLUMNS.length + 3}
-                    className="px-3 py-12 text-center text-sm text-gray-500"
-                  >
-                    Loading leads from Google Sheet…
+                  <td colSpan={LEAD_COLUMNS.length + 3} className="p-0">
+                    <PipelineTableSkeleton rows={8} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (

@@ -1,19 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertCircle, RefreshCw, Users, ShieldCheck, Utensils, IndianRupee, StickyNote } from "lucide-react";
 import {
   aggregateByCustomer,
   formatINR,
   type CustomerAggregate,
   type SubscriptionRow,
-  type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
 import { formatTimestamp, humanize } from "@/lib/crm/leads";
-import { fetchPipelineApi, PIPELINE_CHANGED_EVENT, type PipelineMap } from "@/lib/crm/pipeline";
 import { NoteModal } from "@/components/crm/note-modal";
+import { useSubscriptions, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
+import { PipelineTableSkeleton } from "@/components/crm/skeletons";
 
-const REFRESH_INTERVAL_MS = 60_000;
 
 type SortBy = "recent" | "spent-high" | "spent-low" | "name" | "count";
 
@@ -59,59 +60,33 @@ export default function CrmActiveCustomersDashboard() {
   const [statusFilter, setStatusFilter] = useState("active");
   const [sortBy, setSortBy] = useState<SortBy>("recent");
 
-  const [rows, setRows] = useState<SubscriptionRow[]>([]);
-  const [pipeline, setPipeline] = useState<PipelineMap>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const debouncedSearch = useDebounce(search, 300);
+
+  const {
+    data: subsData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+    dataUpdatedAt,
+  } = useSubscriptions();
+
+  const { data: pipelineData } = usePipelineData();
+  const refreshMutation = useRefreshDashboard();
+
   const [noteModalLead, setNoteModalLead] = useState<{
     email: string;
     name?: string;
     notes?: string;
   } | null>(null);
 
-  const fetchData = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const url = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
-      const [res, pipelineData] = await Promise.all([
-        fetch(url, { cache: "no-store" }),
-        fetchPipelineApi(),
-      ]);
-      const data = (await res.json()) as SubscriptionsApiResponse;
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Request failed: ${res.status}`);
-      }
-      setRows(Array.isArray(data.rows) ? data.rows : []);
-      setPipeline(pipelineData);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load active customers");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const rows = useMemo<SubscriptionRow[]>(() => {
+    if (!subsData?.rows) return [];
+    return Array.isArray(subsData.rows) ? (subsData.rows as SubscriptionRow[]) : [];
+  }, [subsData]);
 
-  useEffect(() => {
-    fetchData();
-    const handler = () => {
-      fetchPipelineApi().then(setPipeline);
-    };
-    window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
-  }, [fetchData]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchData(true);
-      }
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
+  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
 
   const customers = useMemo<CustomerAggregate[]>(() => aggregateByCustomer(rows), [rows]);
 
@@ -120,12 +95,12 @@ export default function CrmActiveCustomersDashboard() {
       if (statusFilter !== "all" && c.currentStatus.toLowerCase() !== statusFilter) {
         return false;
       }
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         const haystack = [c.name, c.email, c.phoneNumber, c.city]
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
-        if (!haystack.includes(search.trim().toLowerCase())) return false;
+        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) return false;
       }
       return true;
     });
@@ -137,7 +112,7 @@ export default function CrmActiveCustomersDashboard() {
     else if (sortBy === "count") sorted.sort((a, b) => b.subscriptionCount - a.subscriptionCount);
     else if (sortBy === "name") sorted.sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
     return sorted;
-  }, [customers, search, statusFilter, sortBy]);
+  }, [customers, debouncedSearch, statusFilter, sortBy]);
 
   const totalActiveRevenue = useMemo(
     () => customers.filter(c => c.currentStatus.toLowerCase() === "active").reduce((sum, c) => sum + c.totalSpent, 0),
@@ -168,7 +143,12 @@ export default function CrmActiveCustomersDashboard() {
           )}
         </div>
         <button
-          onClick={() => fetchData(false, true)}
+          onClick={() =>
+            refreshMutation.mutate(undefined, {
+              onSuccess: () => toast.success("Customers refreshed"),
+              onError: () => toast.error("Refresh failed — using cached data"),
+            })
+          }
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
@@ -216,14 +196,14 @@ export default function CrmActiveCustomersDashboard() {
         </div>
       </div>
 
-      {error && (
+      {isError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <div className="text-sm">
             <p className="font-semibold text-red-900 dark:text-red-200">
               Couldn&apos;t load active customers
             </p>
-            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{error}</p>
+            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{dashError?.message}</p>
           </div>
         </div>
       )}
@@ -274,7 +254,7 @@ export default function CrmActiveCustomersDashboard() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">Loading active customers…</td></tr>
+                <tr><td colSpan={11} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">
                   {customers.length === 0 ? "No paying customers yet." : "No customers match your filters."}

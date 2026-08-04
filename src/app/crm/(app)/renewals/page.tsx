@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Clock,
@@ -15,11 +15,13 @@ import {
   formatINR,
   getSubscriptionEndDate,
   type SubscriptionRow,
-  type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
 import { formatTimestamp, humanize } from "@/lib/crm/leads";
+import { useSubscriptions, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
+import { PipelineTableSkeleton } from "@/components/crm/skeletons";
 
-const REFRESH_INTERVAL_MS = 60_000;
 
 type FilterMode = "all" | "due-3-days" | "due-7-days" | "expired";
 
@@ -30,48 +32,29 @@ function calculateDaysRemaining(endDate: Date): number {
 }
 
 export default function CrmRenewalsDashboardPage() {
-  const [rows, setRows] = useState<SubscriptionRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const url = force
-        ? "/api/crm/subscriptions?refresh=true"
-        : "/api/crm/subscriptions";
-      const res = await fetch(url, { cache: "no-store" });
-      const data = (await res.json()) as SubscriptionsApiResponse;
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Request failed: ${res.status}`);
-      }
-      setRows(Array.isArray(data.rows) ? data.rows : []);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load renewals data");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const debouncedSearch = useDebounce(search, 300);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const {
+    data: subsData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+    dataUpdatedAt,
+  } = useSubscriptions();
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchData(true);
-      }
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const refreshMutation = useRefreshDashboard();
+
+  const rows = useMemo<SubscriptionRow[]>(() => {
+    if (!subsData?.rows) return [];
+    return Array.isArray(subsData.rows) ? (subsData.rows as SubscriptionRow[]) : [];
+  }, [subsData]);
+
+  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
+
 
   // Compute days remaining and renewal status for each subscription
   const processedSubscriptions = useMemo(() => {
@@ -122,17 +105,17 @@ export default function CrmRenewalsDashboardPage() {
         if (sub.renewalStatus !== "expired") return false;
       }
 
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         const haystack = [sub.name, sub.email, sub.phoneNumber, sub.subscriptionType, sub.plan]
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
-        if (!haystack.includes(search.trim().toLowerCase())) return false;
+        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) return false;
       }
 
       return true;
     });
-  }, [processedSubscriptions, filterMode, search]);
+  }, [processedSubscriptions, filterMode, debouncedSearch]);
 
   return (
     <div className="space-y-5">
@@ -153,7 +136,12 @@ export default function CrmRenewalsDashboardPage() {
           )}
         </div>
         <button
-          onClick={() => fetchData(false, true)}
+          onClick={() =>
+            refreshMutation.mutate(undefined, {
+              onSuccess: () => toast.success("Renewals refreshed"),
+              onError: () => toast.error("Refresh failed — using cached data"),
+            })
+          }
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
@@ -201,10 +189,10 @@ export default function CrmRenewalsDashboardPage() {
         </div>
       </div>
 
-      {error && (
+      {isError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
-          <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
+          <p className="text-sm text-red-800 dark:text-red-300">{dashError?.message}</p>
         </div>
       )}
 
@@ -258,8 +246,8 @@ export default function CrmRenewalsDashboardPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-12 text-center text-sm text-gray-500">
-                    Loading subscription renewals...
+                  <td colSpan={7} className="p-0">
+                    <PipelineTableSkeleton rows={6} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (

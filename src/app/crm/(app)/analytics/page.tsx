@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Calendar,
@@ -11,21 +11,21 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import type { LeadRow, LeadsApiResponse } from "@/lib/crm/leads";
+import type { LeadRow } from "@/lib/crm/leads";
 import {
   aggregateByCustomer,
   formatINR,
   type SubscriptionRow,
-  type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
-import type { OrderRow, OrdersApiResponse } from "@/lib/crm/orders";
+import type { OrderRow } from "@/lib/crm/orders";
+import { PIPELINE_STATUSES, effectiveStatus } from "@/lib/crm/pipeline";
 import {
-  PIPELINE_CHANGED_EVENT,
-  PIPELINE_STATUSES,
-  effectiveStatus,
-  fetchPipelineApi,
-  type PipelineMap,
-} from "@/lib/crm/pipeline";
+  useDashboardData,
+  usePipelineData,
+  useRefreshDashboard,
+} from "@/hooks/crm/use-dashboard-data";
+import { toast } from "sonner";
+
 
 type DateFilter = "today" | "all" | "range";
 
@@ -103,62 +103,44 @@ function localDateString(input: Date | string | number | null | undefined): stri
 }
 
 export default function CrmAnalyticsPage() {
-  const [leads, setLeads] = useState<LeadRow[]>([]);
-  const [subs, setSubs] = useState<SubscriptionRow[]>([]);
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [pipeline, setPipeline] = useState<PipelineMap>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // ── React Query: shared cache with MasterPipeline — instant if already loaded
+  const {
+    data: dashData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+    dataUpdatedAt,
+  } = useDashboardData();
+
+  const { data: pipelineData } = usePipelineData();
+  const refreshMutation = useRefreshDashboard();
 
   const [dateMode, setDateMode] = useState<DateFilter>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
-  const [todayStr, setTodayStr] = useState<string>("");
 
-  const fetchAll = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const leadsUrl = force ? "/api/crm/leads?refresh=true" : "/api/crm/leads";
-      const subsUrl = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
-      const ordersUrl = force ? "/api/crm/orders?refresh=true" : "/api/crm/orders";
+  const todayStr = useMemo(() => localDateString(new Date()), []);
+  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
 
-      const [leadsRes, subsRes, ordersRes, pipelineData] = await Promise.all([
-        fetch(leadsUrl, { cache: "no-store" }),
-        fetch(subsUrl, { cache: "no-store" }),
-        fetch(ordersUrl, { cache: "no-store" }),
-        fetchPipelineApi(),
-      ]);
+  // Derive data slices from shared React Query cache
+  const leads = useMemo<LeadRow[]>(() => {
+    if (!dashData?.leads?.rows) return [];
+    return Array.isArray(dashData.leads.rows) ? dashData.leads.rows : [];
+  }, [dashData]);
 
-      const leadsData = (await leadsRes.json()) as LeadsApiResponse;
-      const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
-      const ordersData = (await ordersRes.json()) as OrdersApiResponse;
+  const subs = useMemo<SubscriptionRow[]>(() => {
+    if (!dashData?.subscriptions?.rows) return [];
+    return Array.isArray(dashData.subscriptions.rows) ? dashData.subscriptions.rows : [];
+  }, [dashData]);
 
-      setLeads(leadsData.success ? leadsData.rows : []);
-      setSubs(subsData.success ? subsData.rows : []);
-      setOrders(ordersData.success ? ordersData.rows : []);
-      setPipeline(pipelineData);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load analytics");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const orders = useMemo<OrderRow[]>(() => {
+    if (!dashData?.orders?.rows) return [];
+    return Array.isArray(dashData.orders.rows) ? dashData.orders.rows : [];
+  }, [dashData]);
 
-  useEffect(() => {
-    fetchAll();
-    setTodayStr(localDateString(new Date()));
+  const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
 
-    const handler = () => {
-      fetchPipelineApi().then(setPipeline);
-    };
-    window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
-  }, [fetchAll]);
 
   // Pick the right "date key" for each item across the 3 datasets
   function inDateRange(iso: string | number | null | undefined): boolean {
@@ -379,7 +361,12 @@ export default function CrmAnalyticsPage() {
             </div>
           )}
           <button
-            onClick={() => fetchAll(false, true)}
+            onClick={() =>
+              refreshMutation.mutate(undefined, {
+                onSuccess: () => toast.success("Data refreshed from Google Sheets"),
+                onError: () => toast.error("Refresh failed — using cached data"),
+              })
+            }
             disabled={refreshing || loading}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -389,14 +376,14 @@ export default function CrmAnalyticsPage() {
         </div>
       </div>
 
-      {error && (
+      {isError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <div className="text-sm">
             <p className="font-semibold text-red-900 dark:text-red-200">
               Couldn&apos;t load analytics
             </p>
-            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{error}</p>
+            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{dashError?.message}</p>
           </div>
         </div>
       )}

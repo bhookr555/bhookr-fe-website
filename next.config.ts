@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
     unoptimized: false,
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
-    minimumCacheTTL: 60,
+    minimumCacheTTL: 86400, // 1 day — static brand assets never change
     qualities: [100, 75],
   },
   experimental: {

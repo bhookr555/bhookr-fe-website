@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import {
   SUBSCRIPTION_COLUMNS,
   formatINR,
   type SubscriptionRow,
-  type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
 import { formatTimestamp, humanize } from "@/lib/crm/leads";
-
-const REFRESH_INTERVAL_MS = 60_000;
+import { useSubscriptions, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
+import { PipelineTableSkeleton } from "@/components/crm/skeletons";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All subscriptions" },
@@ -97,44 +98,26 @@ export default function CrmSubscriptionsPage() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
 
-  const [rows, setRows] = useState<SubscriptionRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const debouncedSearch = useDebounce(search, 300);
 
-  const fetchData = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const url = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
-      const res = await fetch(url, { cache: "no-store" });
-      const data = (await res.json()) as SubscriptionsApiResponse;
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Request failed: ${res.status}`);
-      }
-      setRows(Array.isArray(data.rows) ? data.rows : []);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load subscriptions");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const {
+    data: subsData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+    dataUpdatedAt,
+  } = useSubscriptions();
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const refreshMutation = useRefreshDashboard();
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchData(true);
-      }
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const rows = useMemo<SubscriptionRow[]>(() => {
+    if (!subsData?.rows) return [];
+    return Array.isArray(subsData.rows) ? (subsData.rows as SubscriptionRow[]) : [];
+  }, [subsData]);
+
+  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
+
 
   const filtered = useMemo(() => {
     const matching = rows.filter((row) => {
@@ -144,12 +127,12 @@ export default function CrmSubscriptionsPage() {
       if (paymentFilter !== "all" && String(row.paymentStatus).toLowerCase() !== paymentFilter) {
         return false;
       }
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         const haystack = [row.name, row.email, row.phoneNumber, row.orderId]
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
-        if (!haystack.includes(search.trim().toLowerCase())) return false;
+        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) return false;
       }
       return true;
     });
@@ -191,7 +174,12 @@ export default function CrmSubscriptionsPage() {
           )}
         </div>
         <button
-          onClick={() => fetchData(false, true)}
+          onClick={() =>
+            refreshMutation.mutate(undefined, {
+              onSuccess: () => toast.success("Subscriptions refreshed"),
+              onError: () => toast.error("Refresh failed"),
+            })
+          }
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
@@ -200,14 +188,14 @@ export default function CrmSubscriptionsPage() {
         </button>
       </div>
 
-      {error && (
+      {isError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <div className="text-sm">
             <p className="font-semibold text-red-900 dark:text-red-200">
               Couldn&apos;t load subscriptions
             </p>
-            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{error}</p>
+            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{dashError?.message}</p>
           </div>
         </div>
       )}
@@ -262,7 +250,7 @@ export default function CrmSubscriptionsPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={SUBSCRIPTION_COLUMNS.length + 1} className="px-3 py-12 text-center text-sm text-gray-500">Loading subscriptions from Google Sheet…</td></tr>
+                <tr><td colSpan={SUBSCRIPTION_COLUMNS.length + 1} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={SUBSCRIPTION_COLUMNS.length + 1} className="px-3 py-12 text-center text-sm text-gray-500">
                   {rows.length === 0 ? "No subscriptions yet." : "No subscriptions match your filters."}

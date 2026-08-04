@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -21,20 +21,16 @@ import {
   formatTimestamp,
   humanize,
   type LeadRow,
-  type LeadsApiResponse,
 } from "@/lib/crm/leads";
 import {
   formatINR,
   type SubscriptionRow,
-  type SubscriptionsApiResponse,
 } from "@/lib/crm/subscriptions";
 import { getCurrentRole, type CrmRole } from "@/lib/crm/auth";
 import {
-  PIPELINE_CHANGED_EVENT,
   PIPELINE_STATUSES,
   effectiveStatus,
   getStatusMeta,
-  fetchPipelineApi,
   setPipelineStatusApi,
   removePipelineEntryApi,
   type PipelineEntry,
@@ -43,6 +39,9 @@ import {
 } from "@/lib/crm/pipeline";
 import { ConvertModal } from "@/components/crm/convert-modal";
 import { NoteModal } from "@/components/crm/note-modal";
+import { useDashboardData, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { toast } from "sonner";
+
 
 function Field({
   icon: Icon,
@@ -94,73 +93,59 @@ export default function LeadDetailPage() {
   const rawEmail = decodeURIComponent(String(params?.email ?? ""));
   const email = rawEmail.toLowerCase().trim();
 
-  const [role, setRole] = useState<CrmRole | null>(null);
-  const [lead, setLead] = useState<LeadRow | null>(null);
-  const [matchedSubs, setMatchedSubs] = useState<SubscriptionRow[]>([]);
-  const [pipelineEntry, setPipelineEntry] = useState<PipelineEntry | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Role initialization (synchronous)
+  const role = useMemo<CrmRole | null>(() => {
+    if (typeof window === "undefined") return null;
+    return getCurrentRole();
+  }, []);
+
+  // React Query: instant load from in-memory cache
+  const {
+    data: dashData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+  } = useDashboardData();
+
+  const { data: pipelineData } = usePipelineData();
+  const refreshMutation = useRefreshDashboard();
+
   const [convertOpen, setConvertOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const leadsUrl = force ? "/api/crm/leads?refresh=true" : "/api/crm/leads";
-      const clientFormUrl = force ? "/api/crm/client-form?refresh=true" : "/api/crm/client-form";
-      const subsUrl = force ? "/api/crm/subscriptions?refresh=true" : "/api/crm/subscriptions";
+  // Derive lead & subscriptions from shared React Query cache
+  const allLeads = useMemo<LeadRow[]>(() => {
+    if (!dashData) return [];
+    const websiteLeads = Array.isArray(dashData.leads?.rows)
+      ? dashData.leads.rows.map((r) => ({ ...r, leadSource: "website" as const }))
+      : [];
+    const clientFormLeads = Array.isArray(dashData.clientForm?.rows)
+      ? dashData.clientForm.rows.map((r: LeadRow) => ({ ...r, leadSource: "client_form" as const }))
+      : [];
+    return [...websiteLeads, ...clientFormLeads];
+  }, [dashData]);
 
-      const [leadsRes, clientFormRes, subsRes, pipelineData] = await Promise.all([
-        fetch(leadsUrl, { cache: "no-store" }),
-        fetch(clientFormUrl, { cache: "no-store" }).catch(() => null),
-        fetch(subsUrl, { cache: "no-store" }),
-        fetchPipelineApi(),
-      ]);
-      const leadsData = (await leadsRes.json()) as LeadsApiResponse;
-      const clientFormData = clientFormRes && clientFormRes.ok ? await clientFormRes.json() : null;
-      const subsData = (await subsRes.json()) as SubscriptionsApiResponse;
+  const allSubs = useMemo<SubscriptionRow[]>(() => {
+    if (!dashData?.subscriptions?.rows) return [];
+    return Array.isArray(dashData.subscriptions.rows) ? dashData.subscriptions.rows : [];
+  }, [dashData]);
 
-      const websiteLeads = leadsData.success && Array.isArray(leadsData.rows)
-        ? leadsData.rows.map((r) => ({ ...r, leadSource: "website" as const }))
-        : [];
-      const clientFormLeads = clientFormData && clientFormData.success && Array.isArray(clientFormData.rows)
-        ? clientFormData.rows.map((r: any) => ({ ...r, leadSource: "client_form" as const }))
-        : [];
+  const lead = useMemo(() => {
+    return allLeads.find((l) => String(l.email ?? "").toLowerCase().trim() === email) ?? null;
+  }, [allLeads, email]);
 
-      const allLeads = [...websiteLeads, ...clientFormLeads];
-      const allSubs = subsData.success ? subsData.rows : [];
+  const matchedSubs = useMemo(() => {
+    return allSubs.filter((s) => String(s.email ?? "").toLowerCase().trim() === email);
+  }, [allSubs, email]);
 
-      const foundLead =
-        allLeads.find(
-          (l) => String(l.email ?? "").toLowerCase().trim() === email
-        ) ?? null;
-      const foundSubs = allSubs.filter(
-        (s) => String(s.email ?? "").toLowerCase().trim() === email
-      );
+  const pipelineEntry = useMemo(() => {
+    return pipelineData?.data?.[email] ?? null;
+  }, [pipelineData, email]);
 
-      setLead(foundLead);
-      setMatchedSubs(foundSubs);
-      setPipelineEntry(pipelineData[email] ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load lead");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [email]);
+  const error = dashError?.message || actionError;
 
-  useEffect(() => {
-    setRole(getCurrentRole());
-    fetchAll();
-
-    const handler = () => {
-      fetchPipelineApi().then((map) => setPipelineEntry(map[email] ?? null));
-    };
-    window.addEventListener(PIPELINE_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(PIPELINE_CHANGED_EVENT, handler);
-  }, [email, fetchAll]);
 
   const isAdmin = role === "admin";
 
@@ -195,7 +180,9 @@ export default function LeadDetailPage() {
     }
     const success = await setPipelineStatusApi(email, newStatus, role);
     if (!success) {
-      setError("Failed to update status in the database");
+      setActionError("Failed to update status in the database");
+    } else {
+      toast.success(`Status updated to ${newStatus}`);
     }
   };
 
@@ -291,7 +278,12 @@ export default function LeadDetailPage() {
             </select>
           )}
           <button
-            onClick={() => fetchAll(false, true)}
+            onClick={() =>
+              refreshMutation.mutate(undefined, {
+                onSuccess: () => toast.success("Lead details refreshed"),
+                onError: () => toast.error("Refresh failed"),
+              })
+            }
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
           >
@@ -379,7 +371,7 @@ export default function LeadDetailPage() {
                     if (confirm("Remove the conversion mark for this lead?")) {
                       const success = await removePipelineEntryApi(email);
                       if (!success) {
-                        setError("Failed to remove conversion mark from database");
+                        setActionError("Failed to remove conversion mark from database");
                       }
                     }
                   }}

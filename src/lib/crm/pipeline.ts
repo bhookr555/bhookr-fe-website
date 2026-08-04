@@ -336,7 +336,9 @@ export async function saveLeadNoteApi(
   role: CrmRole,
   currentStatus: PipelineStatus = "new"
 ): Promise<boolean> {
-  setPipelineStatus(email, currentStatus, role, { notes });
+  // WHY: removed the localStorage dual-write (setPipelineStatus call).
+  // Firestore is the source of truth. Writing to localStorage was
+  // firing PIPELINE_CHANGED_EVENT twice → double re-render on every save.
   return setPipelineStatusApi(email, currentStatus, role, { notes });
 }
 

@@ -1,16 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import {
   ORDER_COLUMNS,
   type OrderRow,
-  type OrdersApiResponse,
 } from "@/lib/crm/orders";
 import { formatINR } from "@/lib/crm/subscriptions";
 import { formatTimestamp, humanize } from "@/lib/crm/leads";
+import { useOrders, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useDebounce } from "@/hooks/use-debounce";
+import { toast } from "sonner";
+import { PipelineTableSkeleton } from "@/components/crm/skeletons";
 
-const REFRESH_INTERVAL_MS = 60_000;
 
 const PAYMENT_OPTIONS = [
   { value: "all", label: "All payments" },
@@ -99,51 +101,33 @@ export default function CrmOrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
 
-  const [rows, setRows] = useState<OrderRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const debouncedSearch = useDebounce(search, 300);
 
-  const fetchData = useCallback(async (silent = false, force = false) => {
-    if (!silent) setRefreshing(true);
-    setError(null);
-    try {
-      const url = force ? "/api/crm/orders?refresh=true" : "/api/crm/orders";
-      const res = await fetch(url, { cache: "no-store" });
-      const data = (await res.json()) as OrdersApiResponse;
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Request failed: ${res.status}`);
-      }
-      setRows(Array.isArray(data.rows) ? data.rows : []);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load orders");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const {
+    data: ordersData,
+    isLoading: loading,
+    isError,
+    error: dashError,
+    isFetching: refreshing,
+    dataUpdatedAt,
+  } = useOrders();
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const refreshMutation = useRefreshDashboard();
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchData(true);
-      }
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const rows = useMemo<OrderRow[]>(() => {
+    if (!ordersData?.rows) return [];
+    return Array.isArray(ordersData.rows) ? ordersData.rows : [];
+  }, [ordersData]);
+
+  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
+
 
   const filtered = useMemo(() => {
     const matching = rows.filter((row) => {
       if (paymentFilter !== "all" && String(row.paymentStatus).toLowerCase() !== paymentFilter) {
         return false;
       }
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
         const haystack = [
           row.customerName,
           row.customerEmail,
@@ -154,7 +138,7 @@ export default function CrmOrdersPage() {
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
-        if (!haystack.includes(search.trim().toLowerCase())) return false;
+        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) return false;
       }
       return true;
     });
@@ -165,7 +149,7 @@ export default function CrmOrdersPage() {
     else if (sortBy === "amount-high") sorted.sort((a, b) => Number(b.grandTotal || 0) - Number(a.grandTotal || 0));
     else if (sortBy === "amount-low") sorted.sort((a, b) => Number(a.grandTotal || 0) - Number(b.grandTotal || 0));
     return sorted;
-  }, [rows, search, paymentFilter, sortBy]);
+  }, [rows, debouncedSearch, paymentFilter, sortBy]);
 
   const totalRevenue = useMemo(
     () =>
@@ -205,7 +189,12 @@ export default function CrmOrdersPage() {
           )}
         </div>
         <button
-          onClick={() => fetchData(false, true)}
+          onClick={() =>
+            refreshMutation.mutate(undefined, {
+              onSuccess: () => toast.success("Orders refreshed"),
+              onError: () => toast.error("Refresh failed — using cached data"),
+            })
+          }
           disabled={refreshing}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
@@ -214,12 +203,12 @@ export default function CrmOrdersPage() {
         </button>
       </div>
 
-      {error && (
+      {isError && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/30">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
           <div className="text-sm">
             <p className="font-semibold text-red-900 dark:text-red-200">Couldn&apos;t load orders</p>
-            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{error}</p>
+            <p className="mt-0.5 text-red-800 dark:text-red-300/80">{dashError?.message}</p>
           </div>
         </div>
       )}
@@ -267,7 +256,7 @@ export default function CrmOrdersPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={ORDER_COLUMNS.length + 1} className="px-3 py-12 text-center text-sm text-gray-500">Loading orders from Google Sheet…</td></tr>
+                <tr><td colSpan={ORDER_COLUMNS.length + 1} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={ORDER_COLUMNS.length + 1} className="px-3 py-12 text-center text-sm text-gray-500">
                   {rows.length === 0 ? "No orders yet." : "No orders match your filters."}
