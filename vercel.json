@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/sync-gas-to-firestore",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
