@@ -76,7 +76,7 @@ const ReportModal = dynamic(
 
 type SortBy = "newest" | "oldest" | "name";
 type DateFilter = "today" | "all" | "range";
-type LeadSourceFilter = "all" | "website" | "client_form";
+type LeadSourceFilter = "all" | "website" | "client_form" | "ads";
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "newest", label: "Newest first" },
@@ -138,6 +138,58 @@ function localDateString(input: Date | string | number | null | undefined): stri
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function renderAdSourceBadge(lead: LeadRow) {
+  const src = String(lead.utmSource || "").toLowerCase().trim();
+  const sub = String(lead.utmSubSource || "").trim();
+
+  if (src.includes("meta") || src.includes("facebook") || src.includes("fb") || src.includes("ig") || src.includes("instagram")) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+          📢 Meta / IG Ad
+        </span>
+        {sub && <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium truncate max-w-[120px]">{sub}</span>}
+      </div>
+    );
+  }
+
+  if (src.includes("google") || src.includes("gads") || src.includes("adwords")) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+          🎯 Google Ad
+        </span>
+        {sub && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium truncate max-w-[120px]">{sub}</span>}
+      </div>
+    );
+  }
+
+  if (src) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+          📣 {humanize(src)}
+        </span>
+        {sub && <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[120px]">{sub}</span>}
+      </div>
+    );
+  }
+
+  if (lead.leadSource === "client_form") {
+    return (
+      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+        📑 Client Form
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex w-fit items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+      🌐 Direct Website
+    </span>
+  );
 }
 
 // ── MasterPipeline ────────────────────────────────────────────────────────────
@@ -272,7 +324,15 @@ export function MasterPipeline() {
   // hundreds of rows. At 300ms debounce, the filter runs at most once per typing pause.
   const visible = useMemo(() => {
     const matching = dateFilteredLeads.filter((a) => {
-      if (sourceFilter !== "all" && (a.lead.leadSource || "website") !== sourceFilter) return false;
+      if (sourceFilter !== "all") {
+        if (sourceFilter === "ads") {
+          const src = String(a.lead.utmSource || "").trim();
+          const sub = String(a.lead.utmSubSource || "").trim();
+          if (!src && !sub) return false;
+        } else if ((a.lead.leadSource || "website") !== sourceFilter) {
+          return false;
+        }
+      }
       if (filter !== "all" && a.status !== filter) return false;
       if (debouncedSearch.trim()) {
         const haystack = [a.lead.name, a.lead.email, a.lead.phoneNumber]
@@ -602,6 +662,7 @@ export function MasterPipeline() {
             { key: "all", label: "📂 All Sources" },
             { key: "website", label: "🌐 Website Leads" },
             { key: "client_form", label: "📑 Client Form" },
+            { key: "ads", label: "📢 Ad Leads" },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -725,6 +786,7 @@ export function MasterPipeline() {
                 <Th>Name</Th>
                 <Th>Contact</Th>
                 <Th>Plan interest</Th>
+                <Th>Ad / Source</Th>
                 <Th>Captured</Th>
                 <Th>Status</Th>
                 <Th align="right">View</Th>
@@ -733,7 +795,7 @@ export function MasterPipeline() {
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-500">
+                  <td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-500">
                     {dateMode === "today"
                       ? "No leads received today yet. Select 'All time' or 'Date range' above to view past leads."
                       : dateEmptyReason ?? "No leads match this filter."}
@@ -783,6 +845,7 @@ export function MasterPipeline() {
                           <div className="text-gray-400">{String(a.lead.plan ?? "")}</div>
                         </div>
                       </Td>
+                      <Td>{renderAdSourceBadge(a.lead)}</Td>
                       <Td className="text-xs text-gray-600 dark:text-gray-300">
                         {formatTimestamp(a.lead.timestamp)}
                       </Td>

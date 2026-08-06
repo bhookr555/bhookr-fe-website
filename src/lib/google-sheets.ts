@@ -126,7 +126,13 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
       throw fetchError;
     }
 
-    // With no-cors mode, we can't read the response, so we assume success
+    // Server-side backup: post to Next.js API route to guarantee Google Sheets backup bypassing client CORS/adblockers
+    fetch('/api/crm/leads/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(preparedData),
+    }).catch((serverErr) => console.warn('Server backup trigger warning:', serverErr));
+
     console.log('Lead submitted successfully (no-cors mode)');
     return {
       success: true,
