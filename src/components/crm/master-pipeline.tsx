@@ -92,10 +92,48 @@ function tsValue(v: string | number | null | undefined): number {
   return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
+function parseLeadDate(input: Date | string | number | null | undefined): Date | null {
+  if (input === null || input === undefined || input === "") return null;
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input;
+
+  const str = String(input).trim();
+  if (!str) return null;
+
+  // Handle epoch milliseconds or seconds string (e.g. "1710000000000")
+  if (/^\d{10,13}$/.test(str)) {
+    const num = Number(str);
+    const d = new Date(num > 1e11 ? num : num * 1000);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  // Handle DD/MM/YYYY or D/M/YYYY or DD-MM-YYYY (e.g. "06/08/2026" or "06/08/2026 10:36:00")
+  const ddmmyyyy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (ddmmyyyy) {
+    const p1 = parseInt(ddmmyyyy[1] || "0", 10);
+    const p2 = parseInt(ddmmyyyy[2] || "0", 10);
+    const year = parseInt(ddmmyyyy[3] || "0", 10);
+    const hh = parseInt(ddmmyyyy[4] || "0", 10);
+    const mm = parseInt(ddmmyyyy[5] || "0", 10);
+    const ss = parseInt(ddmmyyyy[6] || "0", 10);
+
+    // If p1 > 12, p1 MUST be day, p2 MUST be month
+    if (p1 > 12) {
+      return new Date(year, p2 - 1, p1, hh, mm, ss);
+    }
+    // Default Indian format: p1 = day, p2 = month
+    return new Date(year, p2 - 1, p1, hh, mm, ss);
+  }
+
+  // Standard JS Date constructor fallback (ISO strings like "2026-08-06T10:36:00.000Z")
+  const stdDate = new Date(str);
+  if (!Number.isNaN(stdDate.getTime())) return stdDate;
+
+  return null;
+}
+
 function localDateString(input: Date | string | number | null | undefined): string {
-  if (input === null || input === undefined || input === "") return "";
-  const d = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = parseLeadDate(input);
+  if (!d) return "";
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -696,7 +734,9 @@ export function MasterPipeline() {
               {visible.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-500">
-                    {dateEmptyReason ?? "No leads match this filter."}
+                    {dateMode === "today"
+                      ? "No leads received today yet. Select 'All time' or 'Date range' above to view past leads."
+                      : dateEmptyReason ?? "No leads match this filter."}
                   </td>
                 </tr>
               ) : (
@@ -818,9 +858,10 @@ export function MasterPipeline() {
                           </a>
                           <Link
                             href={href}
-                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-[#E31E24] hover:text-white hover:border-[#E31E24] dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-[#E31E24] dark:hover:text-white transition-colors"
+                            title="View full details of this customer"
                           >
-                            Open <ArrowRight className="h-3 w-3" />
+                            👁️ View Details <ArrowRight className="h-3 w-3" />
                           </Link>
                         </div>
                       </Td>
