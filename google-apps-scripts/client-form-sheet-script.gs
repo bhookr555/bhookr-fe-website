@@ -1,6 +1,7 @@
 /**
  * Google Apps Script for BHOOKR CLIENT FORM SHEET
  * Purpose: Sync and serve direct client intake / form submissions for Bhookr CRM
+ * Inserts NEW leads at ROW 2 (Top of Sheet, immediately under headers).
  * 
  * SETUP INSTRUCTIONS:
  * 1. Open your Google Sheet for Client Form Responses / Intake
@@ -79,7 +80,7 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var timestamp = new Date();
 
-    sheet.appendRow([
+    var rowData = [
       timestamp,
       data.name || '',
       data.email || '',
@@ -89,12 +90,16 @@ function doPost(e) {
       data.weight || '',
       data.foodPreference || '',
       data.foodLove || ''
-    ]);
+    ];
+
+    // Insert NEW lead at Row 2 (Top of Sheet, right under headers)
+    sheet.insertRowBefore(2);
+    sheet.getRange(2, 1, 1, rowData.length).setValues([rowData]);
 
     return responseJSON({
       success: true,
-      message: "Client Form lead added successfully",
-      rowNumber: sheet.getLastRow()
+      message: "Client Form lead added successfully at top of sheet (Row 2)",
+      rowNumber: 2
     });
   } catch (err) {
     return responseJSON({ success: false, error: err.toString() });

@@ -1,6 +1,7 @@
 /**
  * Google Apps Script for BHOOKR WEBSITE LEADS SHEET
  * Purpose: Track all users who complete Step 1 to Step 7 of the subscription form
+ * Inserts NEW leads at ROW 2 (Top of Sheet, immediately under headers).
  * 
  * SETUP INSTRUCTIONS:
  * 1. Open your Google Sheet named "BHOOKER WEBSITE LEADS"
@@ -10,15 +11,8 @@
  * 5. Set "Execute as" to "Me"
  * 6. Set "Who has access" to "Anyone"
  * 7. Copy the deployment URL and add to your .env.local as NEXT_PUBLIC_LEADS_SHEET_URL
- * 
- * SHEET COLUMNS (Row 1 - Headers):
- * A: timestamp | B: name | C: email | D: phoneNumber | E: age | F: gender 
- * G: height | H: weight | I: goal | J: diet | K: foodPreference 
- * L: physicalState | M: subscriptionType | N: plan | O: subscriptionStartDate 
- * P: status | Q: lastStepCompleted | R: checkoutVisited | S: utmSource | T: utmSubSource
  */
 
-// Handle GET requests (CRM Dashboard & API data retrieval)
 function doGet(e) {
   try {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
@@ -205,13 +199,14 @@ function doPost(e) {
         email: data.email || data.phoneNumber
       });
     } else {
-      // Append new lead row
-      sheet.appendRow(rowData);
+      // Insert NEW lead at Row 2 (Top of Sheet, right under headers)
+      sheet.insertRowBefore(2);
+      sheet.getRange(2, 1, 1, headers.length).setValues([rowData]);
 
       return createJsonResponse({
         success: true,
-        message: 'Lead added successfully',
-        rowNumber: sheet.getLastRow(),
+        message: 'Lead added successfully at top of sheet (Row 2)',
+        rowNumber: 2,
         email: data.email || data.phoneNumber
       });
     }
