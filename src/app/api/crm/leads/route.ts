@@ -59,7 +59,9 @@ export async function GET(req: NextRequest) {
   let websiteData = cachedLeads?.data;
   let clientFormData = cachedClientForm?.data;
 
-  const websiteUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
+  const websiteUrl =
+    process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
   const clientFormUrl = process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL;
 
   // 1. Refresh website leads upstream if stale or missing

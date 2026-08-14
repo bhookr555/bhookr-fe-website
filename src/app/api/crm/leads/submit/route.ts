@@ -25,7 +25,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const leadsSheetUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
+    const leadsSheetUrl =
+      process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
+      "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
     let sheetSuccess = false;
 
     // 1. Server-to-server POST to Google Sheets Apps Script (bypasses browser CORS & adblockers)
