@@ -1,21 +1,27 @@
 /**
  * Google Apps Script for BHOOKR WEBSITE LEADS SHEET
  * Purpose: Track all users who complete Step 1 to Step 7 of the subscription form
- * Inserts NEW leads at ROW 2 (Top of Sheet, immediately under headers).
+ * Specifically targets "Sheet2" tab so new leads land cleanly in Sheet2 at Row 2.
  * 
  * SETUP INSTRUCTIONS:
  * 1. Open your Google Sheet named "BHOOKER WEBSITE LEADS"
- * 2. Open Extensions > Apps Script
+ * 2. Select Extensions > Apps Script
  * 3. Replace all code with this script
  * 4. Deploy > New deployment > Web app
  * 5. Set "Execute as" to "Me"
  * 6. Set "Who has access" to "Anyone"
- * 7. Copy the deployment URL and add to your .env.local as NEXT_PUBLIC_LEADS_SHEET_URL
+ * 7. Deploy and copy the Web App URL into .env.local as NEXT_PUBLIC_LEADS_SHEET_URL
  */
+
+function getSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Target "Sheet2" specifically; fallback to "Sheet1" or active sheet if missing
+  return ss.getSheetByName("Sheet2") || ss.getSheetByName("Sheet1") || ss.getActiveSheet();
+}
 
 function doGet(e) {
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const sheet = getSheet();
     const dataRange = sheet.getDataRange();
     const values = dataRange.getValues();
 
@@ -24,7 +30,7 @@ function doGet(e) {
         success: true,
         rows: [],
         total: 0,
-        message: 'No leads found'
+        message: 'No leads found in Sheet2'
       });
     }
 
@@ -96,7 +102,7 @@ function doPost(e) {
       });
     }
 
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const sheet = getSheet();
     const headers = [
       'timestamp',
       'name',
@@ -120,7 +126,7 @@ function doPost(e) {
       'utmSubSource'
     ];
 
-    // Initialize headers if sheet is completely empty
+    // Initialize headers if Sheet2 is completely empty
     if (sheet.getLastRow() === 0) {
       sheet.appendRow(headers);
       const headerRange = sheet.getRange(1, 1, 1, headers.length);
@@ -194,18 +200,18 @@ function doPost(e) {
 
       return createJsonResponse({
         success: true,
-        message: 'Lead updated successfully',
+        message: 'Lead updated successfully in Sheet2',
         rowNumber: existingRow,
         email: data.email || data.phoneNumber
       });
     } else {
-      // Insert NEW lead at Row 2 (Top of Sheet, right under headers)
+      // Insert NEW lead at Row 2 (Top of Sheet2, right under headers)
       sheet.insertRowBefore(2);
       sheet.getRange(2, 1, 1, headers.length).setValues([rowData]);
 
       return createJsonResponse({
         success: true,
-        message: 'Lead added successfully at top of sheet (Row 2)',
+        message: 'Lead added successfully at top of Sheet2 (Row 2)',
         rowNumber: 2,
         email: data.email || data.phoneNumber
       });
