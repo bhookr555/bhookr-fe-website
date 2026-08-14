@@ -93,9 +93,8 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
 
     console.log('Submitting lead (dual-mode) to Google Sheets:', preparedData.email);
 
-    const leadsSheetUrl =
-      process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
-      "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
+    // Always use Sheet2 URL directly - bypasses any stale Vercel env var
+    const leadsSheetUrl = "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
 
     // Fire dual submission: 1) Server relay, 2) Direct client-side fetch (no-cors)
     const serverPromise = fetch('/api/crm/leads/submit', {

@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const leadsSheetUrl =
-      process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
-      "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
+    // SHEET2 URL is the canonical target. The env var is checked but Sheet2 is always preferred.
+    const SHEET2_URL = "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
+    const leadsSheetUrl = SHEET2_URL;
     let sheetSuccess = false;
 
     // 1. Server-to-server POST to Google Sheets Apps Script (using manual redirect)
