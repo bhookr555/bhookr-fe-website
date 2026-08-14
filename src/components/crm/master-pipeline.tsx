@@ -228,7 +228,7 @@ export function MasterPipeline() {
   const [filter, setFilter] = useState<PipelineStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
-  const [dateMode, setDateMode] = useState<DateFilter>("today");
+  const [dateMode, setDateMode] = useState<DateFilter>("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>("all");

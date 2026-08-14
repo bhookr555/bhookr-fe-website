@@ -6,19 +6,9 @@ import {
   isCacheFresh,
   GAS_CACHE_TTL_MS,
 } from "@/lib/crm/cache";
+import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
+import type { LeadRow } from "@/lib/crm/leads";
 
-/**
- * CRM Dashboard API Endpoint — Stale-While-Revalidate Architecture
- *
- * WHY THIS IS INSTANT (<50ms):
- * If Firestore contains cached data for leads/client-form/subscriptions/orders,
- * we return it IMMEDIATELY to the browser — even if it is older than 5 minutes.
- *
- * If the data is stale (or missing), we trigger a background sync to Google Apps
- * Script to update Firestore for future reads, but WE DO NOT BLOCK THE RESPONSE.
- *
- * Staff users NEVER wait on Google Apps Script cold starts (2–10s) again.
- */
 export const dynamic = "force-dynamic";
 
 const GAS_TIMEOUT_MS = 15_000;
@@ -63,7 +53,9 @@ async function backgroundRefreshGasData(
     orders: boolean;
   }
 ) {
-  const leadsUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
+  const leadsUrl =
+    process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
   const clientFormUrl = process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL;
   const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
   const ordersUrl = process.env.NEXT_PUBLIC_ORDERS_SHEET_URL;
@@ -72,18 +64,61 @@ async function backgroundRefreshGasData(
 
   if (staleKeys.leads && leadsUrl) {
     tasks.push(
-      fetchGas(leadsUrl)
-        .then((d) => setCachedData("leads", d, "background-swr"))
-        .catch((e) => console.warn("[swr-bg] Leads refresh failed:", e))
+      (async () => {
+        try {
+          const freshData = await fetchGas(leadsUrl);
+          const cached = await getCachedData<any>("leads");
+          const cachedRows: LeadRow[] = Array.isArray(cached?.data?.rows) ? cached.data.rows : [];
+          const freshRows: LeadRow[] = Array.isArray(freshData?.rows) ? freshData.rows : [];
+
+          // Merge cached and fresh rows so no lead is lost
+          const mergedRows = deduplicateAndMergeLeads(
+            cachedRows.map((r) => ({ ...r, leadSource: "website" as const })),
+            freshRows.map((r) => ({ ...r, leadSource: "website" as const }))
+          );
+
+          const mergedData = {
+            success: true,
+            rows: mergedRows,
+            total: mergedRows.length,
+          };
+
+          await setCachedData("leads", mergedData, "background-swr");
+        } catch (e) {
+          console.warn("[swr-bg] Leads refresh failed:", e);
+        }
+      })()
     );
   }
+
   if (staleKeys.clientForm && clientFormUrl) {
     tasks.push(
-      fetchGas(clientFormUrl)
-        .then((d) => setCachedData("client_form", d, "background-swr"))
-        .catch((e) => console.warn("[swr-bg] ClientForm refresh failed:", e))
+      (async () => {
+        try {
+          const freshData = await fetchGas(clientFormUrl);
+          const cached = await getCachedData<any>("client_form");
+          const cachedRows: LeadRow[] = Array.isArray(cached?.data?.rows) ? cached.data.rows : [];
+          const freshRows: LeadRow[] = Array.isArray(freshData?.rows) ? freshData.rows : [];
+
+          const mergedRows = deduplicateAndMergeLeads(
+            cachedRows.map((r) => ({ ...r, leadSource: "client_form" as const })),
+            freshRows.map((r) => ({ ...r, leadSource: "client_form" as const }))
+          );
+
+          const mergedData = {
+            success: true,
+            rows: mergedRows,
+            total: mergedRows.length,
+          };
+
+          await setCachedData("client_form", mergedData, "background-swr");
+        } catch (e) {
+          console.warn("[swr-bg] ClientForm refresh failed:", e);
+        }
+      })()
     );
   }
+
   if (staleKeys.subscriptions && subsUrl) {
     tasks.push(
       fetchGas(subsUrl)
@@ -91,6 +126,7 @@ async function backgroundRefreshGasData(
         .catch((e) => console.warn("[swr-bg] Subscriptions refresh failed:", e))
     );
   }
+
   if (staleKeys.orders && ordersUrl) {
     tasks.push(
       fetchGas(ordersUrl)
@@ -103,7 +139,7 @@ async function backgroundRefreshGasData(
 }
 
 export async function GET(req: NextRequest) {
-  // ── 1. Auth check (single auth for all endpoints) ─────────────────────────
+  // ── 1. Auth check ─────────────────────────────────────────────────────────
   const authStatus = await authorizeCrmStaff(req);
   if (!authStatus.authorized) {
     return NextResponse.json(
@@ -144,7 +180,6 @@ export async function GET(req: NextRequest) {
       orders: !ordersFresh,
     };
 
-    // If any slice is stale, trigger background refresh WITHOUT blocking response
     if (Object.values(staleKeys).some(Boolean)) {
       backgroundRefreshGasData(staleKeys).catch((e) =>
         console.warn("[dashboard] Background SWR error:", e)
@@ -173,7 +208,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ── 4. Cold Start / Force Refresh: fetch synchronously only when NO cache exists
+  // ── 4. Cold Start / Force Refresh ─────────────────────────────────────────
   const staleKeys = {
     leads: true,
     clientForm: true,
@@ -183,7 +218,6 @@ export async function GET(req: NextRequest) {
 
   await backgroundRefreshGasData(staleKeys);
 
-  // Read updated cache entries
   const [freshLeads, freshClientForm, freshSubs, freshOrders] =
     await Promise.all([
       getCachedData("leads"),
