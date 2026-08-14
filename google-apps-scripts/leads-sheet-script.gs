@@ -1,11 +1,11 @@
 /**
- * Google Apps Script for LEADS SHEET
- * Purpose: Track all users who complete the 7-step subscription form
+ * Google Apps Script for BHOOKR WEBSITE LEADS SHEET
+ * Purpose: Track all users who complete Step 1 to Step 7 of the subscription form
  * 
  * SETUP INSTRUCTIONS:
- * 1. Create a new Google Sheet named "Bhookr Leads"
- * 2. Open Tools > Script editor (Extensions > Apps Script)
- * 3. Paste this code
+ * 1. Open your Google Sheet named "BHOOKER WEBSITE LEADS"
+ * 2. Open Extensions > Apps Script
+ * 3. Replace all code with this script
  * 4. Deploy > New deployment > Web app
  * 5. Set "Execute as" to "Me"
  * 6. Set "Who has access" to "Anyone"
@@ -15,102 +15,146 @@
  * A: timestamp | B: name | C: email | D: phoneNumber | E: age | F: gender 
  * G: height | H: weight | I: goal | J: diet | K: foodPreference 
  * L: physicalState | M: subscriptionType | N: plan | O: subscriptionStartDate 
- * P: status | Q: lastStepCompleted | R: checkoutVisited
+ * P: status | Q: lastStepCompleted | R: checkoutVisited | S: utmSource | T: utmSubSource
  */
 
-// Handle GET requests (for testing)
+// Handle GET requests (CRM Dashboard & API data retrieval)
 function doGet(e) {
   try {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const lastRow = sheet.getLastRow();
-    
-    return ContentService.createTextOutput(
-      JSON.stringify({
+    const dataRange = sheet.getDataRange();
+    const values = dataRange.getValues();
+
+    if (!values || values.length <= 1) {
+      return createJsonResponse({
         success: true,
-        message: 'Leads Sheet is working! Total rows: ' + lastRow,
-        timestamp: new Date().toISOString()
-      })
-    ).setMimeType(ContentService.MimeType.JSON);
+        rows: [],
+        total: 0,
+        message: 'No leads found'
+      });
+    }
+
+    const headers = values[0].map(function(h) { return String(h).trim(); });
+    const rows = [];
+
+    for (var i = 1; i < values.length; i++) {
+      var rowData = values[i];
+      var rowObj = {};
+      var isEmpty = true;
+
+      for (var j = 0; j < headers.length; j++) {
+        var header = headers[j];
+        var val = rowData[j];
+        if (val !== "" && val !== null && val !== undefined) {
+          isEmpty = false;
+        }
+
+        if (val instanceof Date) {
+          rowObj[header] = val.toISOString();
+        } else {
+          rowObj[header] = val;
+        }
+      }
+
+      // Ignore empty rows or rows without contact info
+      if (!isEmpty && (rowObj.email || rowObj.phoneNumber || rowObj.name)) {
+        rowObj.leadSource = "website";
+        rows.push(rowObj);
+      }
+    }
+
+    return createJsonResponse({
+      success: true,
+      rows: rows,
+      total: rows.length,
+      timestamp: new Date().toISOString()
+    });
+
   } catch (error) {
-    return ContentService.createTextOutput(
-      JSON.stringify({
-        success: false,
-        error: error.toString(),
-        message: 'Failed to connect to Leads Sheet'
-      })
-    ).setMimeType(ContentService.MimeType.JSON);
+    Logger.log('doGet Error: ' + error.toString());
+    return createJsonResponse({
+      success: false,
+      error: error.toString(),
+      rows: [],
+      total: 0
+    });
   }
 }
 
-// Main function to handle POST requests
+// Handle POST requests (Step 1 and Step 7 form submissions)
 function doPost(e) {
   try {
-    // Log incoming request for debugging
-    Logger.log('Received POST request at: ' + new Date().toISOString());
-    Logger.log('Post data: ' + e.postData.contents);
-    // Get the active spreadsheet
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    if (!e || !e.postData || !e.postData.contents) {
+      return createJsonResponse({ success: false, error: 'Empty POST request body' });
+    }
+
+    const data = JSON.parse(e.postData.contents);
     
-    // Initialize headers if sheet is empty
+    // CRITICAL: Reject blank submissions to prevent empty rows
+    const cleanName = String(data.name || '').trim();
+    const cleanEmail = String(data.email || '').trim();
+    const cleanPhone = String(data.phoneNumber || '').replace(/\D/g, '');
+
+    if (!cleanName && !cleanEmail && !cleanPhone) {
+      return createJsonResponse({
+        success: false,
+        error: 'Rejected blank lead submission: name, email, or phone is required'
+      });
+    }
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const headers = [
+      'timestamp',
+      'name',
+      'email',
+      'phoneNumber',
+      'age',
+      'gender',
+      'height',
+      'weight',
+      'goal',
+      'diet',
+      'foodPreference',
+      'physicalState',
+      'subscriptionType',
+      'plan',
+      'subscriptionStartDate',
+      'status',
+      'lastStepCompleted',
+      'checkoutVisited',
+      'utmSource',
+      'utmSubSource'
+    ];
+
+    // Initialize headers if sheet is completely empty
     if (sheet.getLastRow() === 0) {
-      const headers = [
-        'timestamp',
-        'name',
-        'email',
-        'phoneNumber',
-        'age',
-        'gender',
-        'height',
-        'weight',
-        'goal',
-        'diet',
-        'foodPreference',
-        'physicalState',
-        'subscriptionType',
-        'plan',
-        'subscriptionStartDate',
-        'status',
-        'lastStepCompleted',
-        'checkoutVisited'
-      ];
       sheet.appendRow(headers);
-      
-      // Format header row
       const headerRange = sheet.getRange(1, 1, 1, headers.length);
       headerRange.setFontWeight('bold');
       headerRange.setBackground('#4285f4');
       headerRange.setFontColor('#ffffff');
     }
-    
-    // Parse incoming data
-    const data = JSON.parse(e.postData.contents);
-    
-    // Validate required fields
-    if (!data.email || !data.name) {
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: false,
-          error: 'Missing required fields: email and name are required'
-        })
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    // Check if lead already exists (based on email)
-    const emailColumn = 3; // Column C
+
     const lastRow = sheet.getLastRow();
     let existingRow = -1;
-    
+
+    // Search for existing lead by Phone Number (Col D = 4) first, then Email (Col C = 3) second
     if (lastRow > 1) {
-      const emailValues = sheet.getRange(2, emailColumn, lastRow - 1, 1).getValues();
-      for (let i = 0; i < emailValues.length; i++) {
-        if (emailValues[i][0] === data.email) {
-          existingRow = i + 2; // +2 because array is 0-indexed and we start from row 2
+      const dataValues = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+      for (var i = 0; i < dataValues.length; i++) {
+        var rowEmail = String(dataValues[i][2] || '').trim().toLowerCase();
+        var rowPhone = String(dataValues[i][3] || '').replace(/\D/g, '');
+
+        var phoneMatch = cleanPhone && rowPhone && (rowPhone.slice(-10) === cleanPhone.slice(-10));
+        var emailMatch = cleanEmail && rowEmail && (rowEmail === cleanEmail.toLowerCase());
+
+        if (phoneMatch || emailMatch) {
+          existingRow = i + 2;
           break;
         }
       }
     }
-    
-    // Prepare row data
+
     const timestamp = new Date();
     const rowData = [
       timestamp,
@@ -129,88 +173,60 @@ function doPost(e) {
       Array.isArray(data.plan) ? data.plan.join(', ') : (data.plan || ''),
       data.subscriptionStartDate || '',
       data.status || 'lead',
-      data.lastStepCompleted || 7,
-      data.checkoutVisited || false
+      data.lastStepCompleted || 1,
+      data.checkoutVisited || false,
+      data.utmSource || '',
+      data.utmSubSource || ''
     ];
-    
-    // Update existing row or append new row
+
     if (existingRow > 0) {
-      // Update existing lead (preserve original timestamp)
-      const existingTimestamp = sheet.getRange(existingRow, 1).getValue();
-      rowData[0] = existingTimestamp;
-      sheet.getRange(existingRow, 1, 1, rowData.length).setValues([rowData]);
+      // Update existing lead row in place (preserve original timestamp if present)
+      const existingRange = sheet.getRange(existingRow, 1, 1, headers.length);
+      const existingValues = existingRange.getValues()[0];
       
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: true,
-          message: 'Lead updated successfully',
-          rowNumber: existingRow,
-          email: data.email
-        })
-      ).setMimeType(ContentService.MimeType.JSON);
-    } else {
-      // Append new lead
-      sheet.appendRow(rowData);
-      
-      return ContentService.createTextOutput(
-        JSON.stringify({
-          success: true,
-          message: 'Lead added successfully',
-          rowNumber: sheet.getLastRow(),
-          email: data.email
-        })
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
-    
-  } catch (error) {
-    // Log error and return error response
-    Logger.log('Error: ' + error.toString());
-    
-    return ContentService.createTextOutput(
-      JSON.stringify({
-        success: false,
-        error: error.toString(),
-        message: 'Failed to process lead submission'
-      })
-    ).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-// Handle GET requests (optional - for testing)
-function doGet(e) {
-  return ContentService.createTextOutput(
-    JSON.stringify({
-      status: 'active',
-      message: 'Bhookr Leads Sheet API is running',
-      version: '1.0.0',
-      endpoints: {
-        POST: 'Submit lead data'
+      // Preserve existing timestamp if secondary update
+      if (existingValues[0]) {
+        rowData[0] = existingValues[0];
       }
-    })
-  ).setMimeType(ContentService.MimeType.JSON);
-}
 
-// Helper function to update checkout visited status
-function updateCheckoutVisited(email) {
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const emailColumn = 3;
-    const checkoutColumn = 18; // Column R
-    const lastRow = sheet.getLastRow();
-    
-    if (lastRow > 1) {
-      const emailValues = sheet.getRange(2, emailColumn, lastRow - 1, 1).getValues();
-      for (let i = 0; i < emailValues.length; i++) {
-        if (emailValues[i][0] === email) {
-          const rowNumber = i + 2;
-          sheet.getRange(rowNumber, checkoutColumn).setValue(true);
-          return true;
+      // Merge non-empty values into existing row
+      for (var k = 1; k < headers.length; k++) {
+        if (!rowData[k] && existingValues[k]) {
+          rowData[k] = existingValues[k];
         }
       }
+
+      existingRange.setValues([rowData]);
+
+      return createJsonResponse({
+        success: true,
+        message: 'Lead updated successfully',
+        rowNumber: existingRow,
+        email: data.email || data.phoneNumber
+      });
+    } else {
+      // Append new lead row
+      sheet.appendRow(rowData);
+
+      return createJsonResponse({
+        success: true,
+        message: 'Lead added successfully',
+        rowNumber: sheet.getLastRow(),
+        email: data.email || data.phoneNumber
+      });
     }
-    return false;
+
   } catch (error) {
-    Logger.log('Error updating checkout visited: ' + error.toString());
-    return false;
+    Logger.log('doPost Error: ' + error.toString());
+    return createJsonResponse({
+      success: false,
+      error: error.toString()
+    });
   }
+}
+
+// Helper to construct JSON response
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }

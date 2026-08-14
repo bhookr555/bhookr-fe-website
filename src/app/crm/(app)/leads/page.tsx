@@ -16,6 +16,7 @@ import {
   humanize,
   type LeadRow,
 } from "@/lib/crm/leads";
+import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
 import {
   type SubscriptionRow,
 } from "@/lib/crm/subscriptions";
@@ -157,7 +158,7 @@ export default function CrmLeadsPage() {
     const clientFormRows: LeadRow[] = Array.isArray(dashData.clientForm?.rows)
       ? dashData.clientForm.rows.map((r: LeadRow) => ({ ...r, leadSource: "client_form" }))
       : [];
-    return [...websiteRows, ...clientFormRows];
+    return deduplicateAndMergeLeads(websiteRows, clientFormRows);
   }, [dashData]);
 
   const subs = useMemo<SubscriptionRow[]>(() => {

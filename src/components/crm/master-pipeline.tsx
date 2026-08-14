@@ -41,6 +41,7 @@ import {
   humanize,
   type LeadRow,
 } from "@/lib/crm/leads";
+import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
 import { type SubscriptionRow } from "@/lib/crm/subscriptions";
 import {
   PIPELINE_STATUSES,
@@ -177,6 +178,14 @@ function renderAdSourceBadge(lead: LeadRow) {
     );
   }
 
+  if (lead.leadSource === "both") {
+    return (
+      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+        🔗 Web + Client Form
+      </span>
+    );
+  }
+
   if (lead.leadSource === "client_form") {
     return (
       <span className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -252,7 +261,7 @@ export function MasterPipeline() {
     const clientFormRows: LeadRow[] = Array.isArray(dashData.clientForm?.rows)
       ? dashData.clientForm.rows.map((r: LeadRow) => ({ ...r, leadSource: "client_form" }))
       : [];
-    return [...websiteRows, ...clientFormRows];
+    return deduplicateAndMergeLeads(websiteRows, clientFormRows);
   }, [dashData]);
 
   const subs = useMemo<SubscriptionRow[]>(() => {

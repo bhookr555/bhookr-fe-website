@@ -25,7 +25,7 @@ export interface LeadRow {
   utmSource?: string;
   utmSubSource?: string;
   foodLove?: string;
-  leadSource?: "website" | "client_form";
+  leadSource?: "website" | "client_form" | "both";
 }
 
 export interface LeadsApiResponse {

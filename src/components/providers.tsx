@@ -5,7 +5,8 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { WhatsAppButton } from "@/components/shared/whatsapp-button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { captureUtms } from "@/lib/utm";
 
 /**
  * WHY these specific values:
@@ -26,6 +27,9 @@ import { useState } from "react";
  *   automatically without any spinner or manual refresh click.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    captureUtms();
+  }, []);
   const [queryClient] = useState(
     () =>
       new QueryClient({

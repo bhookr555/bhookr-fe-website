@@ -28,6 +28,7 @@ import { calculateSubscriptionPrice } from "@/constants/subscription";
 import { getSubscriptionDeliveryFee } from "@/config/pricing";
 import { printInvoice } from "@/lib/invoice";
 import { convertToLeadData } from "@/lib/validators/subscription";
+import { getStoredUtms } from "@/lib/utm";
 import { toast } from "sonner";
 import { Shield, Lock } from "lucide-react";
 import * as fpixel from "@/lib/fpixel";
@@ -93,11 +94,12 @@ export default function SubscriptionPage() {
     });
     
     try {
-      // Read UTM parameters from URL (if any)
-      const urlParams = new URLSearchParams(window.location.search);
+      // Read UTM parameters from stored session (or URL fallback)
+      const stored = getStoredUtms();
+      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const utms = {
-        source: urlParams.get('utm_source'),
-        subSource: urlParams.get('utm_sub_source')
+        source: urlParams?.get('utm_source') || stored.utmSource || null,
+        subSource: urlParams?.get('utm_sub_source') || stored.utmSubSource || null,
       };
 
       // Convert form data to lead format
@@ -159,32 +161,33 @@ export default function SubscriptionPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
- const handlePersonalInfoNext = async (data: PersonalInfoFormData) => {
-  const updatedData = user ? { ...data, userId: user.uid } : data;
-  updateFormData({ personalInfo: updatedData });
+  const handlePersonalInfoNext = async (data: PersonalInfoFormData) => {
+    const updatedData = user ? { ...data, userId: user.uid } : data;
+    updateFormData({ personalInfo: updatedData });
 
-  // Submit partial lead using existing convertToLeadData helper
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const utms = {
-      source: urlParams.get('utm_source'),
-      subSource: urlParams.get('utm_sub_source')
-    };
+    // Submit Step 1 lead instantly with UTM parameters
+    try {
+      const stored = getStoredUtms();
+      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const utms = {
+        source: urlParams?.get('utm_source') || stored.utmSource || null,
+        subSource: urlParams?.get('utm_sub_source') || stored.utmSubSource || null,
+      };
 
-    await submitLead({
-      ...convertToLeadData({ personalInfo: updatedData }, utms),
-      status: 'partial_lead',
-      lastStepCompleted: 1,
-      checkoutVisited: false,
-    });
-    console.log('✅ Partial lead saved from Step 1');
-  } catch (error) {
-    console.error('❌ Step 1 lead save failed (non-blocking):', error);
-  }
+      await submitLead({
+        ...convertToLeadData({ personalInfo: updatedData }, utms),
+        status: 'lead',
+        lastStepCompleted: 1,
+        checkoutVisited: false,
+      });
+      console.log('✅ Step 1 lead captured successfully with UTMs:', utms);
+    } catch (error) {
+      console.error('❌ Step 1 lead save failed (non-blocking):', error);
+    }
 
-  setCurrentStep(currentStep + 1);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
+    setCurrentStep(currentStep + 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handlePhysicalInfoNext = (data: PhysicalInfoFormData) => {
     updateFormData({ physicalInfo: data });
