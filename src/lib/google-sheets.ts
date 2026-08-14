@@ -91,34 +91,27 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
       checkoutVisited: data.checkoutVisited || false,
     };
 
-    console.log('Submitting lead via server relay to Google Sheets:', preparedData.email);
+    console.log('Submitting lead (dual-mode) to Google Sheets:', preparedData.email);
 
-    // Primary: Call server route which executes server-to-server POST to Google Sheets (bypasses adblockers/CORS)
-    const serverRes = await fetch('/api/crm/leads/submit', {
+    const leadsSheetUrl =
+      process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
+      "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
+
+    // Fire dual submission: 1) Server relay, 2) Direct client-side fetch (no-cors)
+    const serverPromise = fetch('/api/crm/leads/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(preparedData),
     });
 
-    if (serverRes.ok) {
-      console.log('✅ Lead submitted successfully to Google Sheets via server relay');
-      return {
-        success: true,
-        message: 'Lead submitted successfully to Google Sheets',
-        email: preparedData.email,
-      };
-    }
+    const directPromise = fetch(leadsSheetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(preparedData),
+      mode: 'no-cors',
+    }).catch((err) => console.warn('Direct Google Sheet fetch warning:', err));
 
-    // Secondary fallback: Direct client-side fetch if server endpoint returned non-200
-    const leadsSheetUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
-    if (leadsSheetUrl) {
-      await fetch(leadsSheetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(preparedData),
-        mode: 'no-cors',
-      });
-    }
+    await Promise.allSettled([serverPromise, directPromise]);
 
     return {
       success: true,

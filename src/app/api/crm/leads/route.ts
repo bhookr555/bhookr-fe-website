@@ -67,7 +67,20 @@ export async function GET(req: NextRequest) {
   // 1. Refresh website leads upstream if stale or missing
   if ((!websiteFresh || !websiteData) && websiteUrl) {
     try {
-      websiteData = await fetchGasData(websiteUrl);
+      const freshWebsiteData = await fetchGasData(websiteUrl);
+      const cachedRows = Array.isArray(cachedLeads?.data?.rows) ? cachedLeads.data.rows : [];
+      const freshRows = Array.isArray(freshWebsiteData?.rows) ? freshWebsiteData.rows : [];
+      const mergedWebRows = deduplicateAndMergeLeads(
+        cachedRows.map((r: any) => ({ ...r, leadSource: "website" as const })),
+        freshRows.map((r: any) => ({ ...r, leadSource: "website" as const }))
+      );
+
+      websiteData = {
+        success: true,
+        rows: mergedWebRows,
+        total: mergedWebRows.length,
+      };
+
       setCachedData("leads", websiteData).catch((e) =>
         console.warn("[leads API] Website leads cache write error:", e)
       );
