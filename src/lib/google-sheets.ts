@@ -96,21 +96,12 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
     // Always use Sheet2 URL directly - bypasses any stale Vercel env var
     const leadsSheetUrl = "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
 
-    // Fire dual submission: 1) Server relay, 2) Direct client-side fetch (no-cors)
-    const serverPromise = fetch('/api/crm/leads/submit', {
+    // Single submission via server relay only (prevents duplicate Sheet2 writes)
+    await fetch('/api/crm/leads/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(preparedData),
-    });
-
-    const directPromise = fetch(leadsSheetUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(preparedData),
-      mode: 'no-cors',
-    }).catch((err) => console.warn('Direct Google Sheet fetch warning:', err));
-
-    await Promise.allSettled([serverPromise, directPromise]);
+    }).catch((err) => console.warn('Server relay warning:', err));
 
     return {
       success: true,
