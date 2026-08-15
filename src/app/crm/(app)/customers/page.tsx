@@ -78,6 +78,7 @@ export default function CrmActiveCustomersDashboard() {
     email: string;
     name?: string;
     notes?: string;
+    noteHistory?: import("@/lib/crm/pipeline").NoteHistoryEntry[];
   } | null>(null);
 
   const rows = useMemo<SubscriptionRow[]>(() => {
@@ -283,6 +284,7 @@ export default function CrmActiveCustomersDashboard() {
                               email: c.email,
                               name: c.name,
                               notes: note || "",
+                              noteHistory: pipeline[emailKey]?.noteHistory ?? [],
                             })
                           }
                           className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
@@ -311,6 +313,7 @@ export default function CrmActiveCustomersDashboard() {
           email={noteModalLead.email}
           name={noteModalLead.name}
           initialNotes={noteModalLead.notes}
+          noteHistory={noteModalLead.noteHistory ?? []}
           onClose={() => setNoteModalLead(null)}
         />
       )}

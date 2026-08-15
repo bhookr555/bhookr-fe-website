@@ -20,12 +20,19 @@ export type PipelineStatus =
   | "converted"
   | "sale_rejected";
 
+export interface NoteHistoryEntry {
+  text: string;
+  savedBy: string;
+  savedAt: string;
+}
+
 export interface PipelineEntry {
   email: string;
   status: PipelineStatus;
   updatedAt: string;
   updatedBy: CrmRole;
   notes?: string;
+  noteHistory?: NoteHistoryEntry[];
   // Conversion-specific (only set when status === "converted"):
   planType?: string;
   amount?: number;
@@ -336,9 +343,30 @@ export async function saveLeadNoteApi(
   role: CrmRole,
   currentStatus: PipelineStatus = "new"
 ): Promise<boolean> {
-  // WHY: removed the localStorage dual-write (setPipelineStatus call).
-  // Firestore is the source of truth. Writing to localStorage was
-  // firing PIPELINE_CHANGED_EVENT twice → double re-render on every save.
-  return setPipelineStatusApi(email, currentStatus, role, { notes });
+  // Uses action: "saveNote" which appends to noteHistory in Firestore.
+  // Notes are NEVER overwritten — each save creates a new history entry.
+  try {
+    const res = await fetch("/api/crm/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "saveNote",
+        email,
+        status: currentStatus,
+        role,
+        extras: { notes, appendNote: true },
+      }),
+    });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (data.success) {
+      window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Failed to save note via API:", err);
+    return false;
+  }
 }
 

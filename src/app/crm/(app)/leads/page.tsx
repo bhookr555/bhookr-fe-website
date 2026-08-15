@@ -145,9 +145,10 @@ export default function CrmLeadsPage() {
 
   const [noteModalLead, setNoteModalLead] = useState<{
     email: string;
-    name?: string;
+    name: string;
     notes?: string;
-    status?: PipelineStatus;
+    noteHistory?: import("@/lib/crm/pipeline").NoteHistoryEntry[];
+    status: import("@/lib/crm/pipeline").PipelineStatus;
   } | null>(null);
 
   const rows = useMemo<LeadRow[]>(() => {
@@ -426,6 +427,7 @@ export default function CrmLeadsPage() {
                                 email: emailKey,
                                 name: String(row.name ?? ""),
                                 notes: pipeline[emailKey]?.notes || "",
+                                noteHistory: pipeline[emailKey]?.noteHistory ?? [],
                                 status: status,
                               });
                             }}
@@ -475,6 +477,7 @@ export default function CrmLeadsPage() {
           email={noteModalLead.email}
           name={noteModalLead.name}
           initialNotes={noteModalLead.notes}
+          noteHistory={noteModalLead.noteHistory ?? []}
           currentStatus={noteModalLead.status}
           onClose={() => setNoteModalLead(null)}
         />

@@ -12,7 +12,7 @@ function normaliseEmail(email: string): string {
 
 /**
  * GET /api/crm/pipeline
- * Fetch all status mappings from Firestore
+ * Fetch all status mappings from Firestore (includes noteHistory)
  */
 export async function GET(req: NextRequest) {
   const authStatus = await authorizeCrmStaff(req);
@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
         updatedAt: data.updatedAt,
         updatedBy: data.updatedBy as CrmRole,
         notes: data.notes,
+        noteHistory: data.noteHistory ?? [],
         planType: data.planType,
         amount: data.amount,
         paymentMethod: data.paymentMethod,
@@ -57,7 +58,12 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/crm/pipeline
- * Upsert or delete a status mapping
+ * Upsert or delete a status mapping.
+ *
+ * NOTES PROTECTION RULES:
+ * - A status-only update NEVER touches the notes / noteHistory fields.
+ * - action === "saveNote" appends a new entry to noteHistory and updates
+ *   the top-level `notes` field. Notes are NEVER blanked by status updates.
  */
 export async function POST(req: NextRequest) {
   const authStatus = await authorizeCrmStaff(req);
@@ -89,11 +95,62 @@ export async function POST(req: NextRequest) {
 
     const docRef = adminDb.collection("crm_pipeline").doc(key);
 
+    // ── DELETE ───────────────────────────────────────────────────────────────
     if (action === "delete") {
       await docRef.delete();
       return NextResponse.json({ success: true });
     }
 
+    // ── NOTE SAVE (append-only) ──────────────────────────────────────────────
+    // Triggered when telecaller clicks "Done" in the Note modal.
+    // New note is appended to noteHistory; `notes` is updated to latest text.
+    // Nothing else (status, planType, etc.) is touched.
+    if (action === "saveNote" || extras?.appendNote === true) {
+      const newNoteText: string = (extras?.notes ?? "").trim();
+      if (!newNoteText) {
+        return NextResponse.json(
+          { success: false, error: "Note text cannot be empty" },
+          { status: 400 }
+        );
+      }
+
+      // Read existing doc to safely merge history
+      const existing = await docRef.get();
+      const existingData = existing.exists ? existing.data()! : {};
+      const existingHistory: Array<{ text: string; savedBy: string; savedAt: string }> =
+        existingData.noteHistory ?? [];
+
+      // If doc has an old plain-string note but no history yet, seed history
+      // with that note so Bindu's earlier notes are recovered automatically.
+      if (existingHistory.length === 0 && existingData.notes) {
+        existingHistory.push({
+          text: existingData.notes,
+          savedBy: existingData.updatedBy ?? "caller",
+          savedAt: existingData.updatedAt ?? new Date().toISOString(),
+        });
+      }
+
+      existingHistory.push({
+        text: newNoteText,
+        savedBy: role ?? "caller",
+        savedAt: new Date().toISOString(),
+      });
+
+      await docRef.set(
+        {
+          notes: newNoteText,
+          noteHistory: existingHistory,
+          // Set a default status if the document is brand new
+          ...(existingData.status ? {} : { status: "new", updatedBy: role, updatedAt: new Date().toISOString() }),
+        },
+        { merge: true }
+      );
+
+      return NextResponse.json({ success: true });
+    }
+
+    // ── STATUS UPDATE ────────────────────────────────────────────────────────
+    // Plain status change. Notes and noteHistory are NEVER touched here.
     if (!status || !role) {
       return NextResponse.json(
         { success: false, error: "Missing status or role" },
@@ -107,12 +164,13 @@ export async function POST(req: NextRequest) {
       updatedBy: role as CrmRole,
     };
 
-    if (extras?.notes !== undefined) payload.notes = extras.notes;
+    // Only write conversion-specific fields if explicitly provided.
+    // NEVER write notes here — notes are protected from status-change updates.
     if (extras?.planType !== undefined) payload.planType = extras.planType;
     if (extras?.amount !== undefined) payload.amount = extras.amount;
     if (extras?.paymentMethod !== undefined) payload.paymentMethod = extras.paymentMethod;
 
-    // Use merge to preserve any existing notes/fields if not explicitly passed
+    // merge: true preserves all existing fields (notes, noteHistory, etc.)
     await docRef.set(payload, { merge: true });
 
     return NextResponse.json({ success: true });
