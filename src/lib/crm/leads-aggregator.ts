@@ -158,48 +158,9 @@ export function deduplicateAndMergeLeads(
   });
 
   const allRaw = [...normalizedWeb, ...normalizedClient];
-  const uniqueLeads: LeadRow[] = [];
-
-  // Maps for fast phone and email lookups
-  const phoneIndexMap = new Map<string, number>();
-  const emailIndexMap = new Map<string, number>();
-
-  for (const rawLead of allRaw) {
-    const phoneKey = normalizePhone(rawLead.phoneNumber);
-    const emailKey = normalizeEmail(rawLead.email);
-
-    let matchIndex: number | undefined;
-
-    if (phoneKey && phoneIndexMap.has(phoneKey)) {
-      matchIndex = phoneIndexMap.get(phoneKey);
-    } else if (emailKey && emailIndexMap.has(emailKey)) {
-      matchIndex = emailIndexMap.get(emailKey);
-    }
-
-    if (matchIndex !== undefined && uniqueLeads[matchIndex]) {
-      // Merge with existing record
-      const existing = uniqueLeads[matchIndex]!;
-      const merged = mergeLeadRows(existing, rawLead);
-      uniqueLeads[matchIndex] = merged;
-
-      // Update index mappings for any new phone/email fields brought in by merge
-      const mergedPhoneKey = normalizePhone(merged.phoneNumber);
-      const mergedEmailKey = normalizeEmail(merged.email);
-
-      if (mergedPhoneKey) phoneIndexMap.set(mergedPhoneKey, matchIndex);
-      if (mergedEmailKey) emailIndexMap.set(mergedEmailKey, matchIndex);
-    } else {
-      // New unique lead
-      const newIndex = uniqueLeads.length;
-      uniqueLeads.push(rawLead);
-
-      if (phoneKey) phoneIndexMap.set(phoneKey, newIndex);
-      if (emailKey) emailIndexMap.set(emailKey, newIndex);
-    }
-  }
 
   // Sort by timestamp newest first
-  uniqueLeads.sort((a, b) => {
+  allRaw.sort((a, b) => {
     const tsA = new Date(a.timestamp).getTime();
     const tsB = new Date(b.timestamp).getTime();
     const valA = Number.isNaN(tsA) ? 0 : tsA;
@@ -207,5 +168,5 @@ export function deduplicateAndMergeLeads(
     return valB - valA;
   });
 
-  return uniqueLeads;
+  return allRaw;
 }

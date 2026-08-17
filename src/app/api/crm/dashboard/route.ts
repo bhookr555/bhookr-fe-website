@@ -6,7 +6,11 @@ import {
   isCacheFresh,
   GAS_CACHE_TTL_MS,
 } from "@/lib/crm/cache";
-import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
+import {
+  deduplicateAndMergeLeads,
+  extractLeadName,
+  extractLeadTimestamp,
+} from "@/lib/crm/leads-aggregator";
 import type { LeadRow } from "@/lib/crm/leads";
 
 export const dynamic = "force-dynamic";
@@ -67,23 +71,22 @@ async function backgroundRefreshGasData(
       (async () => {
         try {
           const freshData = await fetchGas(leadsUrl);
-          const cached = await getCachedData<any>("leads");
-          const cachedRows: LeadRow[] = Array.isArray(cached?.data?.rows) ? cached.data.rows : [];
-          const freshRows: LeadRow[] = Array.isArray(freshData?.rows) ? freshData.rows : [];
+          const freshRows: LeadRow[] = Array.isArray(freshData?.rows)
+            ? freshData.rows.map((r: any) => ({
+                ...r,
+                name: extractLeadName(r) || r.name || "",
+                timestamp: extractLeadTimestamp(r) || r.timestamp || "",
+                leadSource: "website" as const,
+              }))
+            : [];
 
-          // Merge cached and fresh rows so no lead is lost
-          const mergedRows = deduplicateAndMergeLeads(
-            cachedRows.map((r) => ({ ...r, leadSource: "website" as const })),
-            freshRows.map((r) => ({ ...r, leadSource: "website" as const }))
-          );
-
-          const mergedData = {
+          const freshDataClean = {
             success: true,
-            rows: mergedRows,
-            total: mergedRows.length,
+            rows: freshRows,
+            total: freshRows.length,
           };
 
-          await setCachedData("leads", mergedData, "background-swr");
+          await setCachedData("leads", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] Leads refresh failed:", e);
         }
@@ -96,22 +99,22 @@ async function backgroundRefreshGasData(
       (async () => {
         try {
           const freshData = await fetchGas(clientFormUrl);
-          const cached = await getCachedData<any>("client_form");
-          const cachedRows: LeadRow[] = Array.isArray(cached?.data?.rows) ? cached.data.rows : [];
-          const freshRows: LeadRow[] = Array.isArray(freshData?.rows) ? freshData.rows : [];
+          const freshRows: LeadRow[] = Array.isArray(freshData?.rows)
+            ? freshData.rows.map((r: any) => ({
+                ...r,
+                name: extractLeadName(r) || r.name || "",
+                timestamp: extractLeadTimestamp(r) || r.timestamp || "",
+                leadSource: "client_form" as const,
+              }))
+            : [];
 
-          const mergedRows = deduplicateAndMergeLeads(
-            cachedRows.map((r) => ({ ...r, leadSource: "client_form" as const })),
-            freshRows.map((r) => ({ ...r, leadSource: "client_form" as const }))
-          );
-
-          const mergedData = {
+          const freshDataClean = {
             success: true,
-            rows: mergedRows,
-            total: mergedRows.length,
+            rows: freshRows,
+            total: freshRows.length,
           };
 
-          await setCachedData("client_form", mergedData, "background-swr");
+          await setCachedData("client_form", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] ClientForm refresh failed:", e);
         }
