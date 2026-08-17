@@ -108,25 +108,42 @@ function parseLeadDate(input: Date | string | number | null | undefined): Date |
     if (!Number.isNaN(d.getTime())) return d;
   }
 
-  // Handle DD/MM/YYYY or D/M/YYYY or DD-MM-YYYY (e.g. "06/08/2026" or "06/08/2026 10:36:00")
-  const ddmmyyyy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
-  if (ddmmyyyy) {
-    const p1 = parseInt(ddmmyyyy[1] || "0", 10);
-    const p2 = parseInt(ddmmyyyy[2] || "0", 10);
-    const year = parseInt(ddmmyyyy[3] || "0", 10);
-    const hh = parseInt(ddmmyyyy[4] || "0", 10);
-    const mm = parseInt(ddmmyyyy[5] || "0", 10);
-    const ss = parseInt(ddmmyyyy[6] || "0", 10);
+  // Handle slashes or dashes like "8/16/2026", "16/8/2026", "2026-08-16", "8/15/2026 11:46:05 am"
+  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (dateMatch) {
+    const p1 = parseInt(dateMatch[1] || "0", 10);
+    const p2 = parseInt(dateMatch[2] || "0", 10);
+    const p3 = parseInt(dateMatch[3] || "0", 10);
+    const hh = parseInt(dateMatch[4] || "0", 10);
+    const mm = parseInt(dateMatch[5] || "0", 10);
+    const ss = parseInt(dateMatch[6] || "0", 10);
 
-    // If p1 > 12, p1 MUST be day, p2 MUST be month
+    // Case 1: YYYY-MM-DD (e.g. 2026-08-16)
+    if (p1 > 1000) {
+      return new Date(p1, p2 - 1, p3, hh, mm, ss);
+    }
+
+    // Case 2: p3 is 4-digit Year (e.g. M/D/YYYY or D/M/YYYY)
+    const year = p3 > 1000 ? p3 : p3 + 2000;
+
+    // Subcase A: p2 > 12 -> p2 is Day, p1 is Month (M/D/YYYY, e.g. 8/16/2026)
+    if (p2 > 12) {
+      return new Date(year, p1 - 1, p2, hh, mm, ss);
+    }
+
+    // Subcase B: p1 > 12 -> p1 is Day, p2 is Month (D/M/YYYY, e.g. 16/8/2026)
     if (p1 > 12) {
       return new Date(year, p2 - 1, p1, hh, mm, ss);
     }
-    // Default Indian format: p1 = day, p2 = month
+
+    // Subcase C: Both p1 <= 12 and p2 <= 12 -> try JS native Date parsing
+    const std = new Date(str);
+    if (!Number.isNaN(std.getTime())) return std;
+
+    // Default to D/M/YYYY: p1 = day, p2 = month
     return new Date(year, p2 - 1, p1, hh, mm, ss);
   }
 
-  // Standard JS Date constructor fallback (ISO strings like "2026-08-06T10:36:00.000Z")
   const stdDate = new Date(str);
   if (!Number.isNaN(stdDate.getTime())) return stdDate;
 
