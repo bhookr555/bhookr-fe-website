@@ -82,21 +82,42 @@ async function fetchPipeline(): Promise<PipelineResponse> {
   return res.json();
 }
 
+
 // ── Primary Hook: all dashboard data ─────────────────────────────────────────
 
 /**
- * Helper to safely read cached initial dashboard data from localStorage for 0ms render
+ * Bump this version whenever a fix changes how lead data is parsed or displayed.
+ * Old localStorage entries stored under a different version are automatically
+ * discarded on the next page load — no manual Refresh needed.
+ */
+const CACHE_VERSION = "v5"; // bump on each fix that changes lead data shape
+const LS_CACHE_KEY = `bhookr_crm_dash_cache_${CACHE_VERSION}`;
+
+// Purge all old versioned cache keys except the current one
+if (typeof window !== "undefined") {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith("bhookr_crm_dash_cache") && k !== LS_CACHE_KEY)
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Helper to safely read cached initial dashboard data from localStorage for 0ms render.
+ * Uses versioned key — any old cache from a previous deploy is automatically ignored.
  */
 function getInitialDashboardData(): DashboardResponse | undefined {
   if (typeof window === "undefined") return undefined;
   try {
-    const raw = localStorage.getItem("bhookr_crm_dash_cache");
+    const raw = localStorage.getItem(LS_CACHE_KEY);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as DashboardResponse;
     const leadsCount = parsed?.leads?.rows?.length ?? 0;
     const clientFormCount = parsed?.clientForm?.rows?.length ?? 0;
     if (leadsCount === 0 && clientFormCount === 0) {
-      localStorage.removeItem("bhookr_crm_dash_cache");
+      localStorage.removeItem(LS_CACHE_KEY);
       return undefined;
     }
     return parsed;
@@ -106,7 +127,7 @@ function getInitialDashboardData(): DashboardResponse | undefined {
 }
 
 /**
- * Helper to safely write dashboard data to localStorage
+ * Helper to safely write dashboard data to localStorage (versioned key)
  */
 function setInitialDashboardData(data: DashboardResponse) {
   if (typeof window === "undefined") return;
@@ -114,7 +135,7 @@ function setInitialDashboardData(data: DashboardResponse) {
     const leadsCount = data?.leads?.rows?.length ?? 0;
     const clientFormCount = data?.clientForm?.rows?.length ?? 0;
     if (leadsCount > 0 || clientFormCount > 0) {
-      localStorage.setItem("bhookr_crm_dash_cache", JSON.stringify(data));
+      localStorage.setItem(LS_CACHE_KEY, JSON.stringify(data));
     }
   } catch {
     // ignore quota errors
