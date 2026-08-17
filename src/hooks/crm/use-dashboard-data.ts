@@ -221,16 +221,28 @@ export function useRefreshDashboard() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => fetchDashboard(true),
+    mutationFn: async () => {
+      // Wipe browser localStorage cache FIRST so stale/ghost data never re-appears
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("bhookr_crm_dash_cache");
+      }
+      // Remove stale TanStack Query cache so it re-fetches from server
+      queryClient.removeQueries({ queryKey: CRM_QUERY_KEYS.dashboard });
+      // Now force-refresh from server (bypasses Firestore cache too via ?refresh=true)
+      return fetchDashboard(true);
+    },
     onSuccess: (data) => {
       // Seed the cache with the fresh data immediately (no extra fetch)
       queryClient.setQueryData<DashboardResponse>(CRM_QUERY_KEYS.dashboard, data);
+      // Write fresh data back to localStorage so next page load is also correct
+      setInitialDashboardData(data);
     },
     onError: (err) => {
       console.error("[useRefreshDashboard] Force refresh failed:", err);
     },
   });
 }
+
 
 /**
  * Invalidate dashboard after a pipeline status change so all widgets
