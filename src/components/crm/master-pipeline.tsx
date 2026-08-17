@@ -41,7 +41,7 @@ import {
   humanize,
   type LeadRow,
 } from "@/lib/crm/leads";
-import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
+import { deduplicateAndMergeLeads, type MergedLeadRow } from "@/lib/crm/leads-aggregator";
 import { type SubscriptionRow } from "@/lib/crm/subscriptions";
 import {
   PIPELINE_STATUSES,
@@ -280,7 +280,7 @@ export function MasterPipeline() {
   const todayStr = useMemo(() => localDateString(new Date()), []);
 
   // ── Derived data from React Query ─────────────────────────────────────────
-  const leads = useMemo<LeadRow[]>(() => {
+  const leads = useMemo<MergedLeadRow[]>(() => {
     if (!dashData) return [];
     const websiteRows: LeadRow[] = Array.isArray(dashData.leads?.rows)
       ? dashData.leads.rows.map((r) => ({ ...r, leadSource: "website" }))
@@ -890,15 +890,29 @@ export function MasterPipeline() {
                           >
                             {a.lead.name || "—"}
                           </Link>
-                          {a.lead.leadSource === "client_form" ? (
-                            <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-1.5 py-0.2 text-[10px] font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-                              📑 Client Form
-                            </span>
-                          ) : (
-                            <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.2 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                              🌐 Website Lead
-                            </span>
-                          )}
+                          {(() => {
+                            const ml = a.lead as MergedLeadRow;
+                            const sources = ml.allSources ?? [];
+                            if (sources.length > 1) {
+                              return (
+                                <span className="inline-flex w-fit flex-wrap items-center gap-1 rounded-md bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+                                  🔀 {sources.join(" + ")}
+                                </span>
+                              );
+                            }
+                            if (a.lead.leadSource === "client_form") {
+                              return (
+                                <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                                  📑 Client Form
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                🌐 Website Lead
+                              </span>
+                            );
+                          })()}
                         </div>
                       </Td>
                       <Td>

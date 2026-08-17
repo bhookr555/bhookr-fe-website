@@ -1,5 +1,10 @@
 import type { LeadRow } from "@/lib/crm/leads";
 
+/** Extended type that tracks all source labels when a lead is merged */
+export type MergedLeadRow = LeadRow & {
+  allSources?: string[];
+};
+
 /**
  * Normalizes phone numbers for accurate deduplication.
  * Strips all non-digit characters and handles Indian country codes (+91, 0 prefix).
@@ -125,48 +130,121 @@ export function extractLeadName(lead: Record<string, any>): string {
   return "";
 }
 
+/** Source label helpers */
+const SOURCE_LABEL: Record<string, string> = {
+  website: "Website Lead",
+  client_form: "Client Form",
+  both: "Multi-source",
+};
+
+function sourceLabel(src: string | undefined): string {
+  return SOURCE_LABEL[src ?? "website"] ?? "Website Lead";
+}
+
 /**
  * Deduplicates and merges website leads and client sheet leads.
- * 
+ *
  * Strategy:
- * 1. Matches by Phone Number first (strongest match).
- * 2. Matches by Email second (second strongest match).
- * 3. Returns a single unified array sorted by timestamp (newest first).
+ * 1. Matches by normalised Phone Number first (strongest signal).
+ * 2. Matches by normalised Email second.
+ * 3. When a match is found the rows are merged via mergeLeadRows() — earliest
+ *    timestamp wins, empty fields are filled from the secondary row, and
+ *    `allSources` is set to the union of source labels.
+ * 4. Returns a single unified array sorted by timestamp (newest first).
  */
 export function deduplicateAndMergeLeads(
   websiteLeads: LeadRow[] = [],
   clientFormLeads: LeadRow[] = []
-): LeadRow[] {
-  const normalizedWeb: LeadRow[] = websiteLeads.map((r) => {
+): MergedLeadRow[] {
+  const normalizedWeb: MergedLeadRow[] = websiteLeads.map((r) => {
     const raw = r as Record<string, any>;
     return {
       ...r,
       name: extractLeadName(raw) || r.name || "",
       timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
       leadSource: r.leadSource || "website",
+      allSources: [sourceLabel(r.leadSource || "website")],
     };
   });
 
-  const normalizedClient: LeadRow[] = clientFormLeads.map((r) => {
+  const normalizedClient: MergedLeadRow[] = clientFormLeads.map((r) => {
     const raw = r as Record<string, any>;
     return {
       ...r,
       name: extractLeadName(raw) || r.name || "",
       timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
       leadSource: r.leadSource || "client_form",
+      allSources: [sourceLabel(r.leadSource || "client_form")],
     };
   });
 
+  // Index buckets: phone → index, email → index
+  const phoneMap = new Map<string, number>();
+  const emailMap = new Map<string, number>();
+  const merged: MergedLeadRow[] = [];
+
+  function findExistingIndex(row: MergedLeadRow): number {
+    const phone = normalizePhone(row.phoneNumber);
+    const email = normalizeEmail(row.email);
+    if (phone && phoneMap.has(phone)) return phoneMap.get(phone)!;
+    if (email && emailMap.has(email)) return emailMap.get(email)!;
+    return -1;
+  }
+
+  function registerIndex(row: MergedLeadRow, idx: number): void {
+    const phone = normalizePhone(row.phoneNumber);
+    const email = normalizeEmail(row.email);
+    if (phone) phoneMap.set(phone, idx);
+    if (email) emailMap.set(email, idx);
+  }
+
   const allRaw = [...normalizedWeb, ...normalizedClient];
 
-  // Sort by timestamp newest first
+  // Sort newest first before merging so primary = latest submission
   allRaw.sort((a, b) => {
-    const tsA = new Date(a.timestamp).getTime();
-    const tsB = new Date(b.timestamp).getTime();
+    const tsA = new Date(String(a.timestamp)).getTime();
+    const tsB = new Date(String(b.timestamp)).getTime();
     const valA = Number.isNaN(tsA) ? 0 : tsA;
     const valB = Number.isNaN(tsB) ? 0 : tsB;
     return valB - valA;
   });
 
-  return allRaw;
+  for (const row of allRaw) {
+    const existingIdx = findExistingIndex(row);
+    if (existingIdx === -1) {
+      // New unique lead
+      const idx = merged.length;
+      merged.push({ ...row });
+      registerIndex(row, idx);
+    } else {
+      // Duplicate — merge into existing entry
+      const existing = merged[existingIdx]!;
+      const base = mergeLeadRows(existing, row) as MergedLeadRow;
+
+      // Combine all source labels deduped
+      const existingSources = existing.allSources ?? [sourceLabel(existing.leadSource)];
+      const newSources = row.allSources ?? [sourceLabel(row.leadSource)];
+      const combinedSources = Array.from(new Set([...existingSources, ...newSources]));
+
+      merged[existingIdx] = {
+        ...base,
+        allSources: combinedSources,
+        leadSource: combinedSources.length > 1 ? "both" : base.leadSource,
+      };
+
+      // Re-register keys in case the secondary had a different phone/email
+      registerIndex(row, existingIdx);
+    }
+  }
+
+  // Sort final merged list newest first
+  merged.sort((a, b) => {
+    const tsA = new Date(String(a.timestamp)).getTime();
+    const tsB = new Date(String(b.timestamp)).getTime();
+    const valA = Number.isNaN(tsA) ? 0 : tsA;
+    const valB = Number.isNaN(tsB) ? 0 : tsB;
+    return valB - valA;
+  });
+
+  return merged;
 }
