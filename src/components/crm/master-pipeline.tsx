@@ -77,7 +77,7 @@ const ReportModal = dynamic(
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SortBy = "newest" | "oldest" | "name";
-type DateFilter = "today" | "all" | "range";
+type DateFilter = "all" | "today" | "single" | "range";
 type LeadSourceFilter = "all" | "website" | "client_form" | "ads";
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
@@ -230,6 +230,7 @@ export function MasterPipeline() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [dateMode, setDateMode] = useState<DateFilter>("all");
+  const [singleDate, setSingleDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>("all");
@@ -308,6 +309,10 @@ export function MasterPipeline() {
       if (!todayStr) return annotatedLeads;
       return annotatedLeads.filter((a) => a.dateKey === todayStr);
     }
+    if (dateMode === "single") {
+      if (!singleDate) return annotatedLeads;
+      return annotatedLeads.filter((a) => a.dateKey === singleDate);
+    }
     if (dateMode === "range") {
       return annotatedLeads.filter((a) => {
         if (!a.dateKey) return false;
@@ -317,7 +322,7 @@ export function MasterPipeline() {
       });
     }
     return annotatedLeads;
-  }, [annotatedLeads, dateMode, todayStr, startDate, endDate]);
+  }, [annotatedLeads, dateMode, todayStr, singleDate, startDate, endDate]);
 
   const counts = useMemo(() => {
     const map: Record<PipelineStatus | "all", number> = {
@@ -545,12 +550,14 @@ export function MasterPipeline() {
 
   // ── Derived UI state ──────────────────────────────────────────────────────
   const dateModeLabel: Record<DateFilter, string> = {
-    today: "Today", all: "All time", range: "Date range",
+    all: "All time", today: "Today", single: "Specific date", range: "Date range",
   };
 
   const dateEmptyReason =
     dateMode === "today" && dateFilteredLeads.length === 0
-      ? `No leads captured today (${todayStr}). Try "All time" or pick a date range.`
+      ? `No leads captured today (${todayStr}). Try "All time" or pick a specific date.`
+      : dateMode === "single" && singleDate && dateFilteredLeads.length === 0
+      ? `No leads captured on ${singleDate}.`
       : dateMode === "range" && (startDate || endDate) && dateFilteredLeads.length === 0
       ? `No leads between ${startDate || "any"} and ${endDate || "any"}.`
       : null;
@@ -574,7 +581,9 @@ export function MasterPipeline() {
           {!dashLoading && (
             <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
               {dateModeLabel[dateMode]}
-              {dateMode === "range" && (startDate || endDate)
+              {dateMode === "single" && singleDate
+                ? ` · ${singleDate}`
+                : dateMode === "range" && (startDate || endDate)
                 ? ` · ${startDate || "any"} to ${endDate || "any"}`
                 : ""}
               {" · "}status changes save to database · last updated{" "}
@@ -730,10 +739,34 @@ export function MasterPipeline() {
           aria-label="Date filter"
           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-950 dark:text-white"
         >
-          <option value="today" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Today&apos;s leads</option>
           <option value="all" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 All time</option>
+          <option value="today" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Today&apos;s leads</option>
+          <option value="single" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Specific date…</option>
           <option value="range" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Date range…</option>
         </select>
+
+        {dateMode === "single" && (
+          <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-800 dark:bg-gray-950">
+            <span className="text-xs text-gray-400 font-medium">Date:</span>
+            <input
+              type="date"
+              value={singleDate}
+              max={todayStr}
+              onChange={(e) => setSingleDate(e.target.value)}
+              className="bg-transparent text-sm text-gray-900 focus:outline-none dark:text-white"
+            />
+            {singleDate && (
+              <button
+                type="button"
+                onClick={() => setSingleDate("")}
+                className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium ml-1"
+                title="Clear date"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
 
         {dateMode === "range" && (
           <div className="flex flex-wrap items-center gap-2">
