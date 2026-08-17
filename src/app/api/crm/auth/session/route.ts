@@ -37,7 +37,12 @@ export async function POST(req: NextRequest) {
     // Auto-provision admin role for primary accounts (bhookr555@gmail.com / staff)
     if (!role || !VALID_CRM_ROLES.has(role)) {
       const userEmail = String(decodedToken.email ?? "").toLowerCase().trim();
-      if (userEmail === "bhookr555@gmail.com" || userEmail.endsWith("@bhookr.com") || !userDoc.exists) {
+      if (
+        userEmail === "bhookr555@gmail.com" ||
+        userEmail === "bindhusri.s555@gmail.com" ||
+        userEmail.endsWith("@bhookr.com") ||
+        !userDoc.exists
+      ) {
         role = "admin";
         await adminDb.collection("users").doc(uid).set(
           {

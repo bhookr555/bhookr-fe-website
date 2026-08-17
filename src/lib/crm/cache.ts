@@ -22,7 +22,15 @@
 
 import { adminDb } from "@/lib/firebase/admin";
 
-export type CrmCacheKey = "leads" | "client_form" | "subscriptions" | "orders";
+export type CrmCacheKey =
+  | "leads"
+  | "client_form"
+  | "subscriptions"
+  | "orders"
+  | "leads_v5"
+  | "client_form_v5"
+  | "subscriptions_v5"
+  | "orders_v5";
 
 const COLLECTION = "crm_cache";
 
@@ -87,5 +95,5 @@ export function isCacheFresh(cachedAt: string | undefined, ttlMs: number): boole
   return age < ttlMs;
 }
 
-/** Default TTL for GAS-sourced data (5 minutes) */
-export const GAS_CACHE_TTL_MS = 5 * 60 * 1000;
+/** Default TTL for GAS-sourced data (1 minute for fast sync) */
+export const GAS_CACHE_TTL_MS = 60 * 1000;
