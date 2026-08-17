@@ -167,6 +167,25 @@ function localDateString(input: Date | string | number | null | undefined): stri
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * IST-aware display timestamp.
+ * Runs value through parseLeadDate first (which corrects UTC-to-IST rollover),
+ * then formats for display so the CAPTURED column always shows the correct Indian date.
+ */
+function formatLeadTimestamp(input: string | number | null | undefined): string {
+  if (input === null || input === undefined || input === "") return "—";
+  const d = parseLeadDate(input);
+  if (!d) return String(input);
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function renderAdSourceBadge(lead: LeadRow) {
   const src = String(lead.utmSource || "").toLowerCase().trim();
   const sub = String(lead.utmSubSource || "").trim();
@@ -929,7 +948,7 @@ export function MasterPipeline() {
                       </Td>
                       <Td>{renderAdSourceBadge(a.lead)}</Td>
                       <Td className="text-xs text-gray-600 dark:text-gray-300">
-                        {formatTimestamp(a.lead.timestamp)}
+                        {formatLeadTimestamp(a.lead.timestamp)}
                       </Td>
                       <Td>
                         <div className="flex flex-col items-start gap-1">
