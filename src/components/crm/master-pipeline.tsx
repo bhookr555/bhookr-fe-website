@@ -108,39 +108,47 @@ function parseLeadDate(input: Date | string | number | null | undefined): Date |
     if (!Number.isNaN(d.getTime())) return d;
   }
 
-  // Handle slashes or dashes like "8/16/2026", "16/8/2026", "2026-08-16", "8/15/2026 11:46:05 am"
-  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  // Handle ISO strings like "2026-08-17T18:30:00.000Z" or "2026-08-17T08:18:51.422Z"
+  const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1] || "0", 10);
+    const month = parseInt(isoMatch[2] || "0", 10);
+    const day = parseInt(isoMatch[3] || "0", 10);
+    const hh = parseInt(isoMatch[4] || "12", 10);
+    const mm = parseInt(isoMatch[5] || "0", 10);
+    const ss = parseInt(isoMatch[6] || "0", 10);
+
+    // If 18:30 UTC (standard Google Apps Script UTC rollover for midnight IST), adjust to 12:00 PM local
+    if (hh === 18 && mm === 30) {
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+    return new Date(year, month - 1, day, hh, mm, ss);
+  }
+
+  // Handle slash or dash dates like "8/17/2026", "17/8/2026", "8/17/2026 11.24.27"
+  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:\s+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?)?/);
   if (dateMatch) {
     const p1 = parseInt(dateMatch[1] || "0", 10);
     const p2 = parseInt(dateMatch[2] || "0", 10);
     const p3 = parseInt(dateMatch[3] || "0", 10);
-    const hh = parseInt(dateMatch[4] || "0", 10);
+    const hh = parseInt(dateMatch[4] || "12", 10);
     const mm = parseInt(dateMatch[5] || "0", 10);
     const ss = parseInt(dateMatch[6] || "0", 10);
 
-    // Case 1: YYYY-MM-DD (e.g. 2026-08-16)
-    if (p1 > 1000) {
-      return new Date(p1, p2 - 1, p3, hh, mm, ss);
-    }
+    const year = p3 > 1000 ? p3 : (p1 > 1000 ? p1 : p3 + 2000);
 
-    // Case 2: p3 is 4-digit Year (e.g. M/D/YYYY or D/M/YYYY)
-    const year = p3 > 1000 ? p3 : p3 + 2000;
-
-    // Subcase A: p2 > 12 -> p2 is Day, p1 is Month (M/D/YYYY, e.g. 8/16/2026)
+    // M/D/YYYY e.g. 8/17/2026 (p2 > 12 -> p2 is day, p1 is month)
     if (p2 > 12) {
       return new Date(year, p1 - 1, p2, hh, mm, ss);
     }
-
-    // Subcase B: p1 > 12 -> p1 is Day, p2 is Month (D/M/YYYY, e.g. 16/8/2026)
+    // D/M/YYYY e.g. 17/8/2026 (p1 > 12 -> p1 is day, p2 is month)
     if (p1 > 12) {
       return new Date(year, p2 - 1, p1, hh, mm, ss);
     }
 
-    // Subcase C: Both p1 <= 12 and p2 <= 12 -> try JS native Date parsing
-    const std = new Date(str);
-    if (!Number.isNaN(std.getTime())) return std;
-
-    // Default to D/M/YYYY: p1 = day, p2 = month
+    if (p3 > 1000) {
+      return new Date(year, p1 - 1, p2, hh, mm, ss);
+    }
     return new Date(year, p2 - 1, p1, hh, mm, ss);
   }
 
