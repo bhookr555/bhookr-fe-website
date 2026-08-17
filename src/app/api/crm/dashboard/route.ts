@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { authorizeCrmStaff } from "@/lib/api-auth";
 import {
   getCachedData,
@@ -171,8 +171,26 @@ export async function GET(req: NextRequest) {
   const subsFresh = !forceRefresh && isCacheFresh(cachedSubs?.cachedAt, GAS_CACHE_TTL_MS);
   const ordersFresh = !forceRefresh && isCacheFresh(cachedOrders?.cachedAt, GAS_CACHE_TTL_MS);
 
-  // If cache is populated AND fresh, return immediately (<50ms)
-  if (hasLeads && leadsFresh && clientFormFresh) {
+  const staleKeys = {
+    leads: !leadsFresh,
+    clientForm: !clientFormFresh,
+    subscriptions: !subsFresh,
+    orders: !ordersFresh,
+  };
+
+  // If cache is populated, return IMMEDIATELY (<30ms response time!)
+  if (hasLeads && !forceRefresh) {
+    // If cache is stale, refresh Google Sheets in background via Next.js after()
+    if (Object.values(staleKeys).some(Boolean)) {
+      after(async () => {
+        try {
+          await backgroundRefreshGasData(staleKeys);
+        } catch (e) {
+          console.warn("[dashboard] after() background refresh error:", e);
+        }
+      });
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -194,15 +212,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ── 3. Cold Start / Empty Cache / Stale Cache ──────────────────────────────
-  // On Vercel Serverless, un-awaited promises freeze immediately.
-  // We MUST await backgroundRefreshGasData synchronously so Google Sheets data is fetched!
-  const staleKeys = {
-    leads: !leadsFresh,
-    clientForm: !clientFormFresh,
-    subscriptions: !subsFresh,
-    orders: !ordersFresh,
-  };
 
   await backgroundRefreshGasData(staleKeys);
 

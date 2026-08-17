@@ -98,6 +98,33 @@ export function mergeLeadRows(primary: LeadRow, secondary: LeadRow): LeadRow {
   return merged;
 }
 
+export function extractLeadTimestamp(lead: Record<string, any>): string | number {
+  if (lead.timestamp) return lead.timestamp;
+  if (lead.Date_name) return lead.Date_name;
+  if (lead.Date) return lead.Date;
+  if (lead.date_name) return lead.date_name;
+  if (lead.date) return lead.date;
+  if (lead.Submitted) return lead.Submitted;
+  if (lead.submitted) return lead.submitted;
+  if (lead.created_at) return lead.created_at;
+  if (lead.createdAt) return lead.createdAt;
+  if (lead.subscriptionStartDate) return lead.subscriptionStartDate;
+  return "";
+}
+
+export function extractLeadName(lead: Record<string, any>): string {
+  if (lead.name && String(lead.name).trim()) return String(lead.name).trim();
+  if (lead.Date_name) {
+    const str = String(lead.Date_name).trim();
+    const parts = str.split(/\s+/);
+    const firstPart = parts[0] || "";
+    if (parts.length > 1 && /^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/.test(firstPart)) {
+      return parts.slice(1).join(" ");
+    }
+  }
+  return "";
+}
+
 /**
  * Deduplicates and merges website leads and client sheet leads.
  * 
@@ -110,15 +137,25 @@ export function deduplicateAndMergeLeads(
   websiteLeads: LeadRow[] = [],
   clientFormLeads: LeadRow[] = []
 ): LeadRow[] {
-  const normalizedWeb: LeadRow[] = websiteLeads.map((r) => ({
-    ...r,
-    leadSource: r.leadSource || "website",
-  }));
+  const normalizedWeb: LeadRow[] = websiteLeads.map((r) => {
+    const raw = r as Record<string, any>;
+    return {
+      ...r,
+      name: extractLeadName(raw) || r.name || "",
+      timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
+      leadSource: r.leadSource || "website",
+    };
+  });
 
-  const normalizedClient: LeadRow[] = clientFormLeads.map((r) => ({
-    ...r,
-    leadSource: r.leadSource || "client_form",
-  }));
+  const normalizedClient: LeadRow[] = clientFormLeads.map((r) => {
+    const raw = r as Record<string, any>;
+    return {
+      ...r,
+      name: extractLeadName(raw) || r.name || "",
+      timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
+      leadSource: r.leadSource || "client_form",
+    };
+  });
 
   const allRaw = [...normalizedWeb, ...normalizedClient];
   const uniqueLeads: LeadRow[] = [];
