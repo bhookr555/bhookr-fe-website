@@ -92,8 +92,14 @@ function getInitialDashboardData(): DashboardResponse | undefined {
   try {
     const raw = localStorage.getItem("bhookr_crm_dash_cache");
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw);
-    return parsed as DashboardResponse;
+    const parsed = JSON.parse(raw) as DashboardResponse;
+    const leadsCount = parsed?.leads?.rows?.length ?? 0;
+    const clientFormCount = parsed?.clientForm?.rows?.length ?? 0;
+    if (leadsCount === 0 && clientFormCount === 0) {
+      localStorage.removeItem("bhookr_crm_dash_cache");
+      return undefined;
+    }
+    return parsed;
   } catch {
     return undefined;
   }
@@ -105,7 +111,11 @@ function getInitialDashboardData(): DashboardResponse | undefined {
 function setInitialDashboardData(data: DashboardResponse) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem("bhookr_crm_dash_cache", JSON.stringify(data));
+    const leadsCount = data?.leads?.rows?.length ?? 0;
+    const clientFormCount = data?.clientForm?.rows?.length ?? 0;
+    if (leadsCount > 0 || clientFormCount > 0) {
+      localStorage.setItem("bhookr_crm_dash_cache", JSON.stringify(data));
+    }
   } catch {
     // ignore quota errors
   }

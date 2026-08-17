@@ -160,60 +160,48 @@ export async function GET(req: NextRequest) {
       getCachedData("orders"),
     ]);
 
-  const leadsFresh = !forceRefresh && isCacheFresh(cachedLeads?.cachedAt, GAS_CACHE_TTL_MS);
-  const clientFormFresh = !forceRefresh && isCacheFresh(cachedClientForm?.cachedAt, GAS_CACHE_TTL_MS);
+  const leadsData = cachedLeads?.data as { rows?: unknown[] } | undefined;
+  const clientFormData = cachedClientForm?.data as { rows?: unknown[] } | undefined;
+
+  const hasLeads = Array.isArray(leadsData?.rows) && leadsData.rows.length > 0;
+  const hasClientForm = Array.isArray(clientFormData?.rows) && clientFormData.rows.length > 0;
+
+  const leadsFresh = !forceRefresh && hasLeads && isCacheFresh(cachedLeads?.cachedAt, GAS_CACHE_TTL_MS);
+  const clientFormFresh = !forceRefresh && hasClientForm && isCacheFresh(cachedClientForm?.cachedAt, GAS_CACHE_TTL_MS);
   const subsFresh = !forceRefresh && isCacheFresh(cachedSubs?.cachedAt, GAS_CACHE_TTL_MS);
   const ordersFresh = !forceRefresh && isCacheFresh(cachedOrders?.cachedAt, GAS_CACHE_TTL_MS);
 
-  const hasAnyCachedData =
-    Boolean(cachedLeads?.data) ||
-    Boolean(cachedClientForm?.data) ||
-    Boolean(cachedSubs?.data) ||
-    Boolean(cachedOrders?.data);
-
-  // ── 3. NON-BLOCKING SWR: If we have cached data, return it IMMEDIATELY ──────
-  if (hasAnyCachedData && !forceRefresh) {
-    const staleKeys = {
-      leads: !leadsFresh,
-      clientForm: !clientFormFresh,
-      subscriptions: !subsFresh,
-      orders: !ordersFresh,
-    };
-
-    if (Object.values(staleKeys).some(Boolean)) {
-      backgroundRefreshGasData(staleKeys).catch((e) =>
-        console.warn("[dashboard] Background SWR error:", e)
-      );
-    }
-
+  // If cache is populated AND fresh, return immediately (<50ms)
+  if (hasLeads && leadsFresh && clientFormFresh) {
     return NextResponse.json(
       {
         success: true,
-        leads: cachedLeads?.data ?? { success: true, rows: [], total: 0 },
+        leads: cachedLeads!.data,
         clientForm: cachedClientForm?.data ?? { success: true, rows: [], total: 0 },
         subscriptions: cachedSubs?.data ?? { success: true, rows: [], total: 0 },
         orders: cachedOrders?.data ?? { success: true, rows: [], total: 0 },
         meta: {
-          cachedAt: cachedLeads?.cachedAt ?? new Date().toISOString(),
-          source: "firestore-cache-swr",
-          isStale: Object.values(staleKeys).some(Boolean),
+          cachedAt: cachedLeads!.cachedAt,
+          source: "firestore-cache-hit",
         },
       },
       {
         headers: {
-          "X-Cache": "HIT-SWR",
+          "X-Cache": "HIT",
           "Cache-Control": "private, no-store",
         },
       }
     );
   }
 
-  // ── 4. Cold Start / Force Refresh ─────────────────────────────────────────
+  // ── 3. Cold Start / Empty Cache / Stale Cache ──────────────────────────────
+  // On Vercel Serverless, un-awaited promises freeze immediately.
+  // We MUST await backgroundRefreshGasData synchronously so Google Sheets data is fetched!
   const staleKeys = {
-    leads: true,
-    clientForm: true,
-    subscriptions: true,
-    orders: true,
+    leads: !leadsFresh,
+    clientForm: !clientFormFresh,
+    subscriptions: !subsFresh,
+    orders: !ordersFresh,
   };
 
   await backgroundRefreshGasData(staleKeys);
@@ -226,13 +214,26 @@ export async function GET(req: NextRequest) {
       getCachedData("orders"),
     ]);
 
+  const freshLeadsData = freshLeads?.data as { rows?: unknown[] } | undefined;
+  const freshClientFormData = freshClientForm?.data as { rows?: unknown[] } | undefined;
+
+  const finalLeads =
+    Array.isArray(freshLeadsData?.rows) && freshLeadsData.rows.length > 0
+      ? freshLeads!.data
+      : (cachedLeads?.data ?? { success: true, rows: [], total: 0 });
+
+  const finalClientForm =
+    Array.isArray(freshClientFormData?.rows) && freshClientFormData.rows.length > 0
+      ? freshClientForm!.data
+      : (cachedClientForm?.data ?? { success: true, rows: [], total: 0 });
+
   return NextResponse.json(
     {
       success: true,
-      leads: freshLeads?.data ?? { success: false, rows: [], total: 0 },
-      clientForm: freshClientForm?.data ?? { success: true, rows: [], total: 0 },
-      subscriptions: freshSubs?.data ?? { success: false, rows: [], total: 0 },
-      orders: freshOrders?.data ?? { success: false, rows: [], total: 0 },
+      leads: finalLeads,
+      clientForm: finalClientForm,
+      subscriptions: freshSubs?.data ?? cachedSubs?.data ?? { success: true, rows: [], total: 0 },
+      orders: freshOrders?.data ?? cachedOrders?.data ?? { success: true, rows: [], total: 0 },
       meta: {
         cachedAt: new Date().toISOString(),
         source: "gas-sync",
