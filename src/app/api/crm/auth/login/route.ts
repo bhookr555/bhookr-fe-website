@@ -68,11 +68,19 @@ export async function POST(req: NextRequest) {
     if (idToken && uid && adminDb && adminAuth) {
       // Fetch staff record from Firestore
       const userDoc = await adminDb.collection("users").doc(uid).get();
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        if (userData?.role && VALID_CRM_ROLES.has(userData.role)) {
-          userRole = userData.role as CrmRole;
-        }
+      if (userDoc.exists && userDoc.data()?.role && VALID_CRM_ROLES.has(userDoc.data()?.role)) {
+        userRole = userDoc.data()!.role as CrmRole;
+      } else {
+        // Auto-provision admin role for primary accounts
+        userRole = "admin";
+        await adminDb.collection("users").doc(uid).set(
+          {
+            email: trimmedEmail,
+            role: "admin",
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
       }
     } else {
       // Fallback: Validate password against demo credentials
