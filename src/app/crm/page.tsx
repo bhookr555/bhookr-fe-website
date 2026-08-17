@@ -38,29 +38,51 @@ export default function CrmLoginPage() {
 
     try {
       if (isFirebaseConfigured && !forceBypass) {
-        // Option 1: Secure Firebase Authentication + Firestore Role check
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        const token = await user.getIdToken();
+        try {
+          const userCredential = await signInWithEmailAndPassword(auth, email, password);
+          const user = userCredential.user;
+          const token = await user.getIdToken();
 
-        // Send token to our server session API to verify and set secure HttpOnly cookie
-        const res = await fetch("/api/crm/auth/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        });
+          const res = await fetch("/api/crm/auth/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          });
 
-        const data = await res.json();
+          const data = await res.json();
 
-        if (!res.ok || !data.success) {
-          // Access denied or token validation failed on backend
-          await signOut(auth);
-          throw new Error(data.error || "Access denied: Insufficient permissions.");
+          if (!res.ok || !data.success) {
+            await signOut(auth);
+            throw new Error(data.error || "Access denied: Insufficient permissions.");
+          }
+
+          loginAs(data.role as CrmRole);
+          router.push("/crm/dashboard");
+          return;
+        } catch (clientErr: any) {
+          // If client-side network failed (e.g. adblocker, corporate firewall, DNS),
+          // fallback seamlessly to server-side login endpoint
+          if (
+            clientErr.code === "auth/network-request-failed" ||
+            clientErr.message?.includes("network-request-failed")
+          ) {
+            console.warn("[CRM Auth] Client network failed, falling back to server-side login...");
+            const serverRes = await fetch("/api/crm/auth/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, password }),
+            });
+
+            const serverData = await serverRes.json();
+            if (serverRes.ok && serverData.success) {
+              loginAs(serverData.role as CrmRole);
+              router.push("/crm/dashboard");
+              return;
+            }
+            throw new Error(serverData.error || "Authentication failed. Please check credentials.");
+          }
+          throw clientErr;
         }
-
-        // Backend successfully verified and returned the user's role
-        loginAs(data.role as CrmRole);
-        router.push("/crm/dashboard");
       } else {
         // Fallback: Local Development Bypass
         if (password !== CRM_DEMO_PASSWORD) {
@@ -72,9 +94,12 @@ export default function CrmLoginPage() {
       }
     } catch (err: any) {
       console.error("Login failed:", err);
-      // Clean up user-friendly Firebase errors if applicable
       let errMsg = err.message || "An unexpected error occurred during sign in.";
-      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
+      if (
+        err.code === "auth/invalid-credential" ||
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/wrong-password"
+      ) {
         errMsg = "Invalid email or password. Please try again.";
       }
       setError(errMsg);

@@ -29,6 +29,7 @@ import {
 import { getCurrentRole, type CrmRole } from "@/lib/crm/auth";
 import {
   PIPELINE_STATUSES,
+  cleanPhoneKey,
   effectiveStatus,
   getStatusMeta,
   setPipelineStatusApi,
@@ -133,7 +134,15 @@ export default function LeadDetailPage() {
   }, [dashData]);
 
   const lead = useMemo(() => {
-    return allLeads.find((l) => String(l.email ?? "").toLowerCase().trim() === email) ?? null;
+    return (
+      allLeads.find((l) => {
+        const eKey = String(l.email ?? "").toLowerCase().trim();
+        if (eKey && eKey === email) return true;
+        const pKey = cleanPhoneKey(l.phoneNumber);
+        if (pKey && pKey === email) return true;
+        return false;
+      }) ?? null
+    );
   }, [allLeads, email]);
 
   const matchedSubs = useMemo(() => {
@@ -168,8 +177,8 @@ export default function LeadDetailPage() {
 
   const eff = useMemo(() => {
     const localMap: PipelineMap = pipelineEntry ? { [email]: pipelineEntry } : {};
-    return effectiveStatus(email, localMap, verifiedEmailSet);
-  }, [email, verifiedEmailSet, pipelineEntry]);
+    return effectiveStatus(email, localMap, verifiedEmailSet, lead?.phoneNumber);
+  }, [email, verifiedEmailSet, pipelineEntry, lead]);
   const effMeta = getStatusMeta(eff.status);
 
   const handleStatusChange = async (newStatus: PipelineStatus) => {
@@ -503,6 +512,7 @@ export default function LeadDetailPage() {
           email={email}
           name={String(lead.name ?? "")}
           initialNotes={pipelineEntry?.notes || ""}
+          noteHistory={pipelineEntry?.noteHistory ?? []}
           currentStatus={eff.status}
           onClose={() => setNoteOpen(false)}
         />

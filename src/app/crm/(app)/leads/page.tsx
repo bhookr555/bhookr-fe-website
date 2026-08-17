@@ -22,6 +22,7 @@ import {
 } from "@/lib/crm/subscriptions";
 import {
   PIPELINE_STATUSES,
+  cleanPhoneKey,
   effectiveStatus,
   getStatusMeta,
   type PipelineStatus,
@@ -183,7 +184,7 @@ export default function CrmLeadsPage() {
 
   const annotated = useMemo(() => {
     return rows.map((row) => {
-      const eff = effectiveStatus(String(row.email ?? ""), pipeline, verifiedEmails);
+      const eff = effectiveStatus(String(row.email ?? ""), pipeline, verifiedEmails, row.phoneNumber);
       return { row, status: eff.status, source: eff.source };
     });
   }, [rows, pipeline, verifiedEmails]);
@@ -377,7 +378,7 @@ export default function CrmLeadsPage() {
                 </tr>
               ) : (
                 filtered.map(({ row, status, source }, idx) => {
-                  const emailKey = String(row.email ?? "").toLowerCase().trim();
+                  const emailKey = String(row.email ?? "").toLowerCase().trim() || cleanPhoneKey(row.phoneNumber);
                   const meta = getStatusMeta(status);
                   const href = `/crm/leads/${encodeURIComponent(emailKey)}`;
                   return (

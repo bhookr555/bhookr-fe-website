@@ -258,20 +258,37 @@ export function getStatusMeta(status: PipelineStatus): PipelineStatusMeta {
   return PIPELINE_STATUSES.find((s) => s.value === status) ?? PIPELINE_STATUSES[0]!;
 }
 
+export function cleanPhoneKey(phone?: string | number | null): string {
+  if (!phone) return "";
+  const digits = String(phone).replace(/\D/g, "");
+  if (digits.length >= 10) return `phone_${digits.slice(-10)}`;
+  return digits ? `phone_${digits}` : "";
+}
+
 /**
  * Determine the effective pipeline status for a lead.
  * A verified online payment (in Subscriptions sheet) always wins —
  * those leads show as "converted" regardless of local state.
+ * Checks by email key first, then falls back to phone_XXXXXXXXXX key.
  */
 export function effectiveStatus(
   email: string,
   pipeline: PipelineMap,
-  verifiedEmails: Set<string>
+  verifiedEmails: Set<string>,
+  phone?: string | number | null
 ): { status: PipelineStatus; source: "online" | "local" | "default" } {
-  const key = normaliseEmail(email);
-  if (verifiedEmails.has(key)) return { status: "converted", source: "online" };
-  const entry = pipeline[key];
-  if (entry) return { status: entry.status, source: "local" };
+  const emailKey = normaliseEmail(email);
+  if (emailKey && verifiedEmails.has(emailKey)) return { status: "converted", source: "online" };
+
+  if (emailKey && pipeline[emailKey]) {
+    return { status: pipeline[emailKey].status, source: "local" };
+  }
+
+  const pKey = cleanPhoneKey(phone);
+  if (pKey && pipeline[pKey]) {
+    return { status: pipeline[pKey].status, source: "local" };
+  }
+
   return { status: "new", source: "default" };
 }
 

@@ -85,10 +85,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, email, status, role, extras } = body;
 
-    const key = normaliseEmail(email);
+    const rawInput = String(email ?? "").trim();
+    let key = "";
+    if (rawInput.startsWith("phone_")) {
+      key = rawInput.toLowerCase();
+    } else if (rawInput.includes("@")) {
+      key = rawInput.toLowerCase();
+    } else {
+      const digits = rawInput.replace(/\D/g, "");
+      if (digits.length >= 10) {
+        key = `phone_${digits.slice(-10)}`;
+      } else if (rawInput) {
+        key = rawInput.toLowerCase();
+      }
+    }
+
     if (!key) {
       return NextResponse.json(
-        { success: false, error: "Missing or invalid email" },
+        { success: false, error: "Missing or invalid lead identifier (email or phone)" },
         { status: 400 }
       );
     }

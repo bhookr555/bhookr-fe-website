@@ -45,6 +45,7 @@ import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
 import { type SubscriptionRow } from "@/lib/crm/subscriptions";
 import {
   PIPELINE_STATUSES,
+  cleanPhoneKey,
   effectiveStatus,
   getStatusMeta,
   setPipelineStatusApi,
@@ -291,7 +292,7 @@ export function MasterPipeline() {
 
   const annotatedLeads = useMemo(() => {
     return leads.map((lead) => {
-      const eff = effectiveStatus(String(lead.email ?? ""), pipeline, verifiedEmails);
+      const eff = effectiveStatus(String(lead.email ?? ""), pipeline, verifiedEmails, lead.phoneNumber);
       return {
         lead,
         status: eff.status,
@@ -729,9 +730,9 @@ export function MasterPipeline() {
           aria-label="Date filter"
           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-950 dark:text-white"
         >
-          <option value="today">📅 Today&apos;s leads</option>
-          <option value="all">📅 All time</option>
-          <option value="range">📅 Date range…</option>
+          <option value="today" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Today&apos;s leads</option>
+          <option value="all" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 All time</option>
+          <option value="range" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Date range…</option>
         </select>
 
         {dateMode === "range" && (
@@ -776,7 +777,7 @@ export function MasterPipeline() {
           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-950 dark:text-white"
         >
           {SORT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
+            <option key={opt.value} value={opt.value} className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">
               Sort: {opt.label}
             </option>
           ))}
@@ -812,7 +813,7 @@ export function MasterPipeline() {
                 </tr>
               ) : (
                 visible.map((a, idx) => {
-                  const emailKey = String(a.lead.email ?? "").toLowerCase().trim();
+                  const emailKey = String(a.lead.email ?? "").toLowerCase().trim() || cleanPhoneKey(a.lead.phoneNumber);
                   const meta = getStatusMeta(a.status);
                   const href = `/crm/leads/${encodeURIComponent(emailKey)}`;
                   const isOnlineConverted = a.status === "converted" && a.source === "online";
@@ -884,7 +885,7 @@ export function MasterPipeline() {
                                 className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
                               >
                                 {PIPELINE_STATUSES.map((s) => (
-                                  <option key={s.value} value={s.value}>
+                                  <option key={s.value} value={s.value} className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">
                                     {s.icon} {s.shortLabel}
                                   </option>
                                 ))}
