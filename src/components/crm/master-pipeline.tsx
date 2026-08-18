@@ -387,10 +387,7 @@ export function MasterPipeline() {
     if (dateMode === "all") return annotatedLeads;
     if (dateMode === "today") {
       if (!todayStr) return annotatedLeads;
-      // Include leads captured today OR leads with explicit saved pipeline status (so follow-ups from past days are never hidden!)
-      return annotatedLeads.filter(
-        (a) => a.dateKey === todayStr || a.status !== "new" || a.hasExplicitStatus
-      );
+      return annotatedLeads.filter((a) => a.dateKey === todayStr);
     }
     if (dateMode === "single") {
       if (!singleDate) return annotatedLeads;
@@ -413,33 +410,19 @@ export function MasterPipeline() {
       new: 0, pending: 0, follow_up: 0, trial_requested: 0,
       hot_prospect: 0, future_prospect: 0, converted: 0, sale_rejected: 0,
     };
-    // For non-new pipeline statuses, count across ALL annotatedLeads (all time) so follow-up counts are permanently accurate!
-    for (const a of annotatedLeads) {
-      if (a.status !== "new") {
+    for (const a of dateFilteredLeads) {
+      if (map[a.status] !== undefined) {
         map[a.status]++;
       }
     }
-    // For 'new' status, count new leads within current date scope
-    for (const a of dateFilteredLeads) {
-      if (a.status === "new") {
-        map.new++;
-      }
-    }
     return map;
-  }, [annotatedLeads, dateFilteredLeads]);
+  }, [dateFilteredLeads]);
 
   // ── VISIBLE rows — uses debouncedSearch, not live search ─────────────────
   // WHY: Without debounce, every keystroke triggers this useMemo over potentially
   // hundreds of rows. At 300ms debounce, the filter runs at most once per typing pause.
   const visible = useMemo(() => {
-    // If a specific status chip (like follow_up, pending, etc.) is active and dateMode is "today" or "all",
-    // source from all annotatedLeads so historical leads in that status remain visible permanently!
-    const sourceList =
-      filter !== "all" && (dateMode === "today" || dateMode === "all")
-        ? annotatedLeads
-        : dateFilteredLeads;
-
-    const matching = sourceList.filter((a) => {
+    const matching = dateFilteredLeads.filter((a) => {
       if (sourceFilter !== "all") {
         if (sourceFilter === "ads") {
           const src = String(a.lead.utmSource || "").trim();
@@ -471,7 +454,7 @@ export function MasterPipeline() {
       );
     }
     return sorted;
-  }, [annotatedLeads, dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter, dateMode]);
+  }, [dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
