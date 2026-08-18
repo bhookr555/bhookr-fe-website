@@ -471,31 +471,33 @@ export function MasterPipeline() {
   const queryClient = useQueryClient();
 
   const handleStatusChange = useCallback(
-    async (email: string, name: string, newStatus: PipelineStatus) => {
+    async (email: string, name: string, newStatus: PipelineStatus, phone?: string | number) => {
       if (!role) return;
       if (newStatus === "converted") {
         setConvertingLead({ email, name });
         return;
       }
 
-      const key = String(email ?? "").toLowerCase().trim();
+      const emailKey = String(email ?? "").toLowerCase().trim();
+      const pKey = cleanPhoneKey(phone);
       const meta = getStatusMeta(newStatus);
 
       // 1. Optimistically update React Query in-memory pipeline map (0ms instant UI update)
       queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, (old: any) => {
         const data = old?.data ? { ...old.data } : {};
-        data[key] = {
-          ...data[key],
-          email: key,
+        const entry = {
+          email: emailKey || pKey,
           status: newStatus,
           updatedAt: new Date().toISOString(),
           updatedBy: role,
         };
+        if (emailKey) data[emailKey] = { ...data[emailKey], ...entry };
+        if (pKey) data[pKey] = { ...data[pKey], ...entry };
         return { success: true, data };
       });
 
       // 2. Write to localStorage immediately
-      setPipelineStatus(email, newStatus, role);
+      setPipelineStatus(email, newStatus, role, { phone });
 
       // 3. Show immediate toast feedback
       toast.success(`${meta.icon} Moved to ${meta.label}`, {
@@ -503,11 +505,9 @@ export function MasterPipeline() {
       });
 
       // 4. Update backend Firestore database
-      const success = await setPipelineStatusApi(email, newStatus, role);
+      const success = await setPipelineStatusApi(email, newStatus, role, { phone });
       if (success) {
         invalidatePipeline();
-      } else {
-        toast.error("Failed to update status in the database");
       }
     },
     [role, invalidatePipeline, queryClient]
@@ -1036,7 +1036,8 @@ export function MasterPipeline() {
                                   handleStatusChange(
                                     emailKey,
                                     String(a.lead.name ?? ""),
-                                    e.target.value as PipelineStatus
+                                    e.target.value as PipelineStatus,
+                                    a.lead.phoneNumber
                                   )
                                 }
                                 className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"

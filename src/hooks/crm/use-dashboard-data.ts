@@ -24,7 +24,7 @@ import {
 import type { LeadRow } from "@/lib/crm/leads";
 import type { SubscriptionRow } from "@/lib/crm/subscriptions";
 import type { OrderRow } from "@/lib/crm/orders";
-import type { PipelineMap } from "@/lib/crm/pipeline";
+import { loadPipeline, type PipelineMap } from "@/lib/crm/pipeline";
 
 // ── Query Keys ────────────────────────────────────────────────────────────────
 // Centralised so all invalidation calls use the same keys
@@ -72,14 +72,23 @@ async function fetchDashboard(forceRefresh = false): Promise<DashboardResponse> 
 }
 
 async function fetchPipeline(): Promise<PipelineResponse> {
-  const res = await fetch("/api/crm/pipeline", {
-    credentials: "include",
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`Pipeline fetch failed: ${res.status}`);
+  const localPipeline = typeof window !== "undefined" ? loadPipeline() : {};
+  try {
+    const res = await fetch("/api/crm/pipeline", {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { success: true, data: localPipeline };
+    }
+    const body = await res.json();
+    const serverMap = body?.success && body?.pipeline ? body.pipeline : {};
+    const mergedMap = { ...serverMap, ...localPipeline };
+    return { success: true, data: mergedMap };
+  } catch (err) {
+    console.warn("[fetchPipeline] API fetch failed, using local pipeline:", err);
+    return { success: true, data: localPipeline };
   }
-  return res.json();
 }
 
 

@@ -216,15 +216,17 @@ export function setPipelineStatus(
     planType?: string;
     amount?: number;
     paymentMethod?: string;
+    phone?: string | number | null;
   }
 ): void {
   if (typeof window === "undefined") return;
   const key = normaliseEmail(email);
-  if (!key) return;
+  const pKey = cleanPhoneKey(extras?.phone);
+  if (!key && !pKey) return;
   const map = loadPipeline();
-  const existing = map[key];
-  map[key] = {
-    email: key,
+  const existing = (key ? map[key] : null) || (pKey ? map[pKey] : null);
+  const entry: PipelineEntry = {
+    email: key || pKey,
     status,
     updatedAt: new Date().toISOString(),
     updatedBy: role,
@@ -240,6 +242,8 @@ export function setPipelineStatus(
         ? extras?.paymentMethod ?? existing?.paymentMethod
         : undefined,
   };
+  if (key) map[key] = { ...map[key], ...entry };
+  if (pKey) map[pKey] = { ...map[pKey], ...entry };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
 }
@@ -313,6 +317,7 @@ export async function setPipelineStatusApi(
     planType?: string;
     amount?: number;
     paymentMethod?: string;
+    phone?: string | number | null;
   }
 ): Promise<boolean> {
   try {
