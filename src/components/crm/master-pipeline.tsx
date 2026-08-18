@@ -378,7 +378,7 @@ export function MasterPipeline() {
         status: eff.status,
         source: eff.source,
         dateKey: localDateString(lead.timestamp),
-        hasExplicitStatus: eff.source === "override" || eff.source === "local" || eff.source === "online",
+        hasExplicitStatus: eff.source === "local" || eff.source === "online",
       };
     });
   }, [leads, pipeline, verifiedEmails]);
