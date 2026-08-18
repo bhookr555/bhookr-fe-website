@@ -21,6 +21,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -48,6 +49,7 @@ import {
   cleanPhoneKey,
   effectiveStatus,
   getStatusMeta,
+  setPipelineStatus,
   setPipelineStatusApi,
   type PipelineMap,
   type PipelineStatus,
@@ -61,6 +63,7 @@ import {
   usePipelineData,
   useRefreshDashboard,
   useInvalidateDashboard,
+  CRM_QUERY_KEYS,
 } from "@/hooks/crm/use-dashboard-data";
 import { useDebounce } from "@/hooks/use-debounce";
 
@@ -465,6 +468,8 @@ export function MasterPipeline() {
     });
   }, [refreshMutation]);
 
+  const queryClient = useQueryClient();
+
   const handleStatusChange = useCallback(
     async (email: string, name: string, newStatus: PipelineStatus) => {
       if (!role) return;
@@ -472,19 +477,40 @@ export function MasterPipeline() {
         setConvertingLead({ email, name });
         return;
       }
+
+      const key = String(email ?? "").toLowerCase().trim();
+      const meta = getStatusMeta(newStatus);
+
+      // 1. Optimistically update React Query in-memory pipeline map (0ms instant UI update)
+      queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, (old: any) => {
+        const data = old?.data ? { ...old.data } : {};
+        data[key] = {
+          ...data[key],
+          email: key,
+          status: newStatus,
+          updatedAt: new Date().toISOString(),
+          updatedBy: role,
+        };
+        return { success: true, data };
+      });
+
+      // 2. Write to localStorage immediately
+      setPipelineStatus(email, newStatus, role);
+
+      // 3. Show immediate toast feedback
+      toast.success(`${meta.icon} Moved to ${meta.label}`, {
+        description: name || email,
+      });
+
+      // 4. Update backend Firestore database
       const success = await setPipelineStatusApi(email, newStatus, role);
       if (success) {
-        const meta = getStatusMeta(newStatus);
-        toast.success(`${meta.icon} Moved to ${meta.label}`, {
-          description: name || email,
-        });
-        // Invalidate pipeline query → React Query background-refetches pipeline
         invalidatePipeline();
       } else {
         toast.error("Failed to update status in the database");
       }
     },
-    [role, invalidatePipeline]
+    [role, invalidatePipeline, queryClient]
   );
 
   const exportToCsv = useCallback(() => {

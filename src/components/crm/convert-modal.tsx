@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { IndianRupee, X } from "lucide-react";
 import {
   PAYMENT_METHOD_OPTIONS,
   PLAN_TYPE_OPTIONS,
+  setPipelineStatus,
   setPipelineStatusApi,
 } from "@/lib/crm/pipeline";
+import { CRM_QUERY_KEYS } from "@/hooks/crm/use-dashboard-data";
 import type { CrmRole } from "@/lib/crm/auth";
 
 interface ConvertModalProps {
@@ -30,6 +33,8 @@ export function ConvertModal({
   const [notes, setNotes] = useState("");
   const [confirming, setConfirming] = useState(false);
 
+  const queryClient = useQueryClient();
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!confirming) {
@@ -37,6 +42,34 @@ export function ConvertModal({
       return;
     }
     if (!role) return;
+
+    const key = String(email ?? "").toLowerCase().trim();
+
+    // 1. Optimistic React Query cache update (0ms response)
+    queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, (old: any) => {
+      const data = old?.data ? { ...old.data } : {};
+      data[key] = {
+        ...data[key],
+        email: key,
+        status: "converted",
+        updatedAt: new Date().toISOString(),
+        updatedBy: role,
+        planType,
+        amount: amount ? Number(amount) : undefined,
+        paymentMethod,
+        notes: notes.trim() || undefined,
+      };
+      return { success: true, data };
+    });
+
+    // 2. Immediate local storage update
+    setPipelineStatus(email, "converted", role, {
+      planType,
+      amount: amount ? Number(amount) : undefined,
+      paymentMethod,
+      notes: notes.trim() || undefined,
+    });
+
     const success = await setPipelineStatusApi(email, "converted", role, {
       planType,
       amount: amount ? Number(amount) : undefined,
