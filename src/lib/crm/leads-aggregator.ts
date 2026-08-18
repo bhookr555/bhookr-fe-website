@@ -134,7 +134,7 @@ export function extractLeadName(lead: Record<string, any>): string {
 const SOURCE_LABEL: Record<string, string> = {
   website: "Website Lead",
   client_form: "Client Form",
-  both: "Multi-source",
+  both: "Website + Client Form",
 };
 
 function sourceLabel(src: string | undefined): string {

@@ -189,14 +189,31 @@ function formatLeadTimestamp(input: string | number | null | undefined): string 
 function renderAdSourceBadge(lead: LeadRow) {
   const src = String(lead.utmSource || "").toLowerCase().trim();
   const sub = String(lead.utmSubSource || "").trim();
+  const rawSrc = String(lead.utmSource || "").trim();
 
-  if (src.includes("meta") || src.includes("facebook") || src.includes("fb") || src.includes("ig") || src.includes("instagram")) {
+  const isMeta =
+    src.includes("meta") ||
+    src.includes("facebook") ||
+    src.includes("fb") ||
+    src.includes("ig") ||
+    src.includes("instagram");
+
+  if (isMeta) {
     return (
       <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800">
           📢 Meta / IG Ad
         </span>
-        {sub && <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium truncate max-w-[120px]">{sub}</span>}
+        {sub && (
+          <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 truncate max-w-[140px]">
+            Sub: {sub}
+          </span>
+        )}
+        {rawSrc && (
+          <span className="text-[10px] font-mono text-purple-500/80 dark:text-purple-400/80 truncate max-w-[140px]">
+            UTM: {rawSrc}
+          </span>
+        )}
       </div>
     );
   }
@@ -204,44 +221,62 @@ function renderAdSourceBadge(lead: LeadRow) {
   if (src.includes("google") || src.includes("gads") || src.includes("adwords")) {
     return (
       <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
           🎯 Google Ad
         </span>
-        {sub && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium truncate max-w-[120px]">{sub}</span>}
+        {sub && (
+          <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate max-w-[140px]">
+            Sub: {sub}
+          </span>
+        )}
+        {rawSrc && (
+          <span className="text-[10px] font-mono text-blue-500/80 dark:text-blue-400/80 truncate max-w-[140px]">
+            UTM: {rawSrc}
+          </span>
+        )}
       </div>
     );
   }
 
-  if (src) {
+  if (rawSrc || sub) {
     return (
       <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-          📣 {humanize(src)}
+        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
+          📣 {humanize(rawSrc || "Campaign")}
         </span>
-        {sub && <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[120px]">{sub}</span>}
+        {sub && (
+          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 truncate max-w-[140px]">
+            Sub: {sub}
+          </span>
+        )}
+        {rawSrc && (
+          <span className="text-[10px] font-mono text-amber-500/80 dark:text-amber-400/80 truncate max-w-[140px]">
+            UTM: {rawSrc}
+          </span>
+        )}
       </div>
     );
   }
 
   if (lead.leadSource === "both") {
     return (
-      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-        🔗 Web + Client Form
+      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
+        🔗 Website + Client Form
       </span>
     );
   }
 
   if (lead.leadSource === "client_form") {
     return (
-      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
         📑 Client Form
       </span>
     );
   }
 
   return (
-    <span className="inline-flex w-fit items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
-      🌐 Direct Website
+    <span className="inline-flex w-fit items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+      🌐 Website Lead
     </span>
   );
 }
@@ -343,6 +378,7 @@ export function MasterPipeline() {
         status: eff.status,
         source: eff.source,
         dateKey: localDateString(lead.timestamp),
+        hasExplicitStatus: eff.source === "override" || eff.source === "local" || eff.source === "online",
       };
     });
   }, [leads, pipeline, verifiedEmails]);
@@ -351,7 +387,10 @@ export function MasterPipeline() {
     if (dateMode === "all") return annotatedLeads;
     if (dateMode === "today") {
       if (!todayStr) return annotatedLeads;
-      return annotatedLeads.filter((a) => a.dateKey === todayStr);
+      // Include leads captured today OR leads with explicit saved pipeline status (so follow-ups from past days are never hidden!)
+      return annotatedLeads.filter(
+        (a) => a.dateKey === todayStr || a.status !== "new" || a.hasExplicitStatus
+      );
     }
     if (dateMode === "single") {
       if (!singleDate) return annotatedLeads;
@@ -374,15 +413,33 @@ export function MasterPipeline() {
       new: 0, pending: 0, follow_up: 0, trial_requested: 0,
       hot_prospect: 0, future_prospect: 0, converted: 0, sale_rejected: 0,
     };
-    for (const a of dateFilteredLeads) map[a.status]++;
+    // For non-new pipeline statuses, count across ALL annotatedLeads (all time) so follow-up counts are permanently accurate!
+    for (const a of annotatedLeads) {
+      if (a.status !== "new") {
+        map[a.status]++;
+      }
+    }
+    // For 'new' status, count new leads within current date scope
+    for (const a of dateFilteredLeads) {
+      if (a.status === "new") {
+        map.new++;
+      }
+    }
     return map;
-  }, [dateFilteredLeads]);
+  }, [annotatedLeads, dateFilteredLeads]);
 
   // ── VISIBLE rows — uses debouncedSearch, not live search ─────────────────
   // WHY: Without debounce, every keystroke triggers this useMemo over potentially
   // hundreds of rows. At 300ms debounce, the filter runs at most once per typing pause.
   const visible = useMemo(() => {
-    const matching = dateFilteredLeads.filter((a) => {
+    // If a specific status chip (like follow_up, pending, etc.) is active and dateMode is "today" or "all",
+    // source from all annotatedLeads so historical leads in that status remain visible permanently!
+    const sourceList =
+      filter !== "all" && (dateMode === "today" || dateMode === "all")
+        ? annotatedLeads
+        : dateFilteredLeads;
+
+    const matching = sourceList.filter((a) => {
       if (sourceFilter !== "all") {
         if (sourceFilter === "ads") {
           const src = String(a.lead.utmSource || "").trim();
@@ -414,7 +471,7 @@ export function MasterPipeline() {
       );
     }
     return sorted;
-  }, [dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter]);
+  }, [annotatedLeads, dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter, dateMode]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
