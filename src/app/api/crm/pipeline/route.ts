@@ -49,7 +49,10 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, pipeline });
+    return NextResponse.json(
+      { success: true, pipeline },
+      { headers: { "Cache-Control": "private, no-cache, no-store, must-revalidate" } }
+    );
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to load pipeline";
     return NextResponse.json({ success: false, error: msg }, { status: 500 });

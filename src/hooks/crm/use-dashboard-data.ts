@@ -90,7 +90,7 @@ async function fetchPipeline(): Promise<PipelineResponse> {
  * Old localStorage entries stored under a different version are automatically
  * discarded on the next page load — no manual Refresh needed.
  */
-const CACHE_VERSION = "v5"; // bump on each fix that changes lead data shape
+const CACHE_VERSION = "v6"; // bump on each fix that changes lead data shape
 const LS_CACHE_KEY = `bhookr_crm_dash_cache_${CACHE_VERSION}`;
 
 // Purge all old versioned cache keys except the current one
@@ -243,9 +243,15 @@ export function useRefreshDashboard() {
 
   return useMutation({
     mutationFn: async () => {
-      // Wipe browser localStorage cache FIRST so stale/ghost data never re-appears
+      // Wipe all browser localStorage cache keys FIRST so stale/ghost data never re-appears
       if (typeof window !== "undefined") {
-        localStorage.removeItem("bhookr_crm_dash_cache");
+        try {
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith("bhookr_crm_dash_cache"))
+            .forEach((k) => localStorage.removeItem(k));
+        } catch {
+          // ignore
+        }
       }
       // Remove stale TanStack Query cache so it re-fetches from server
       queryClient.removeQueries({ queryKey: CRM_QUERY_KEYS.dashboard });

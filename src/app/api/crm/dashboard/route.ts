@@ -86,7 +86,7 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("leads_v5", freshDataClean, "background-swr");
+          await setCachedData("leads_v6", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] Leads refresh failed:", e);
         }
@@ -114,7 +114,7 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("client_form_v5", freshDataClean, "background-swr");
+          await setCachedData("client_form_v6", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] ClientForm refresh failed:", e);
         }
@@ -125,7 +125,7 @@ async function backgroundRefreshGasData(
   if (staleKeys.subscriptions && subsUrl) {
     tasks.push(
       fetchGas(subsUrl)
-        .then((d) => setCachedData("subscriptions_v5", d, "background-swr"))
+        .then((d) => setCachedData("subscriptions_v6", d, "background-swr"))
         .catch((e) => console.warn("[swr-bg] Subscriptions refresh failed:", e))
     );
   }
@@ -133,7 +133,7 @@ async function backgroundRefreshGasData(
   if (staleKeys.orders && ordersUrl) {
     tasks.push(
       fetchGas(ordersUrl)
-        .then((d) => setCachedData("orders_v5", normalizeOrders(d), "background-swr"))
+        .then((d) => setCachedData("orders_v6", normalizeOrders(d), "background-swr"))
         .catch((e) => console.warn("[swr-bg] Orders refresh failed:", e))
     );
   }
@@ -157,10 +157,10 @@ export async function GET(req: NextRequest) {
   // ── 2. Read all Firestore cache entries in parallel (<50ms) ───────────────
   const [cachedLeads, cachedClientForm, cachedSubs, cachedOrders] =
     await Promise.all([
-      getCachedData("leads_v5"),
-      getCachedData("client_form_v5"),
-      getCachedData("subscriptions_v5"),
-      getCachedData("orders_v5"),
+      getCachedData("leads_v6"),
+      getCachedData("client_form_v6"),
+      getCachedData("subscriptions_v6"),
+      getCachedData("orders_v6"),
     ]);
 
   const leadsData = cachedLeads?.data as { rows?: unknown[] } | undefined;
@@ -209,7 +209,7 @@ export async function GET(req: NextRequest) {
       {
         headers: {
           "X-Cache": "HIT",
-          "Cache-Control": "private, no-store",
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
         },
       }
     );
@@ -220,10 +220,10 @@ export async function GET(req: NextRequest) {
 
   const [freshLeads, freshClientForm, freshSubs, freshOrders] =
     await Promise.all([
-      getCachedData("leads_v5"),
-      getCachedData("client_form_v5"),
-      getCachedData("subscriptions_v5"),
-      getCachedData("orders_v5"),
+      getCachedData("leads_v6"),
+      getCachedData("client_form_v6"),
+      getCachedData("subscriptions_v6"),
+      getCachedData("orders_v6"),
     ]);
 
   const freshLeadsData = freshLeads?.data as { rows?: unknown[] } | undefined;

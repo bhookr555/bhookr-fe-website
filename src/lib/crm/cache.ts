@@ -30,7 +30,11 @@ export type CrmCacheKey =
   | "leads_v5"
   | "client_form_v5"
   | "subscriptions_v5"
-  | "orders_v5";
+  | "orders_v5"
+  | "leads_v6"
+  | "client_form_v6"
+  | "subscriptions_v6"
+  | "orders_v6";
 
 const COLLECTION = "crm_cache";
 
