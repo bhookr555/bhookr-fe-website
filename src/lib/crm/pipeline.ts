@@ -321,14 +321,34 @@ export async function setPipelineStatusApi(
   }
 ): Promise<boolean> {
   try {
-    const res = await fetch("/api/crm/pipeline", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, status, role, extras }),
-    });
-    if (!res.ok) throw new Error(`Status ${res.status}`);
-    const data = await res.json();
-    if (data.success) {
+    const key = normaliseEmail(email);
+    const pKey = cleanPhoneKey(extras?.phone);
+    if (!key && !pKey) return false;
+
+    let success = false;
+    if (key) {
+      const res = await fetch("/api/crm/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: key, status, role, extras }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) success = true;
+      }
+    }
+    if (pKey && pKey !== key) {
+      const res = await fetch("/api/crm/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: pKey, status, role, extras }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) success = true;
+      }
+    }
+    if (success) {
       window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
       return true;
     }

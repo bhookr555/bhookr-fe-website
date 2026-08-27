@@ -39,10 +39,12 @@ import {
 } from "lucide-react";
 import {
   formatTimestamp,
+  parseLeadDate,
+  tsValue,
   humanize,
   type LeadRow,
 } from "@/lib/crm/leads";
-import { deduplicateAndMergeLeads, type MergedLeadRow } from "@/lib/crm/leads-aggregator";
+import { deduplicateAndMergeLeads, getMergedLeadsCached, type MergedLeadRow } from "@/lib/crm/leads-aggregator";
 import { type SubscriptionRow } from "@/lib/crm/subscriptions";
 import {
   PIPELINE_STATUSES,
@@ -91,76 +93,6 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-function tsValue(v: string | number | null | undefined): number {
-  if (v === null || v === undefined || v === "") return 0;
-  const d = new Date(v as string | number);
-  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-}
-
-function parseLeadDate(input: Date | string | number | null | undefined): Date | null {
-  if (input === null || input === undefined || input === "") return null;
-  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input;
-
-  const str = String(input).trim();
-  if (!str) return null;
-
-  // Handle epoch milliseconds or seconds string (e.g. "1710000000000")
-  if (/^\d{10,13}$/.test(str)) {
-    const num = Number(str);
-    const d = new Date(num > 1e11 ? num : num * 1000);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-
-  // Handle ISO strings like "2026-08-17T18:30:00.000Z" or "2026-08-17T08:18:51.422Z"
-  const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
-  if (isoMatch) {
-    const year = parseInt(isoMatch[1] || "0", 10);
-    const month = parseInt(isoMatch[2] || "0", 10);
-    const day = parseInt(isoMatch[3] || "0", 10);
-    const hh = parseInt(isoMatch[4] || "12", 10);
-    const mm = parseInt(isoMatch[5] || "0", 10);
-    const ss = parseInt(isoMatch[6] || "0", 10);
-
-    // If 18:30 UTC (standard Google Apps Script UTC rollover for midnight IST), adjust to 12:00 PM local
-    if (hh === 18 && mm === 30) {
-      return new Date(year, month - 1, day, 12, 0, 0);
-    }
-    return new Date(year, month - 1, day, hh, mm, ss);
-  }
-
-  // Handle slash or dash dates like "8/17/2026", "17/8/2026", "8/17/2026 11.24.27"
-  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:\s+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?)?/);
-  if (dateMatch) {
-    const p1 = parseInt(dateMatch[1] || "0", 10);
-    const p2 = parseInt(dateMatch[2] || "0", 10);
-    const p3 = parseInt(dateMatch[3] || "0", 10);
-    const hh = parseInt(dateMatch[4] || "12", 10);
-    const mm = parseInt(dateMatch[5] || "0", 10);
-    const ss = parseInt(dateMatch[6] || "0", 10);
-
-    const year = p3 > 1000 ? p3 : (p1 > 1000 ? p1 : p3 + 2000);
-
-    // M/D/YYYY e.g. 8/17/2026 (p2 > 12 -> p2 is day, p1 is month)
-    if (p2 > 12) {
-      return new Date(year, p1 - 1, p2, hh, mm, ss);
-    }
-    // D/M/YYYY e.g. 17/8/2026 (p1 > 12 -> p1 is day, p2 is month)
-    if (p1 > 12) {
-      return new Date(year, p2 - 1, p1, hh, mm, ss);
-    }
-
-    if (p3 > 1000) {
-      return new Date(year, p1 - 1, p2, hh, mm, ss);
-    }
-    return new Date(year, p2 - 1, p1, hh, mm, ss);
-  }
-
-  const stdDate = new Date(str);
-  if (!Number.isNaN(stdDate.getTime())) return stdDate;
-
-  return null;
-}
-
 function localDateString(input: Date | string | number | null | undefined): string {
   const d = parseLeadDate(input);
   if (!d) return "";
@@ -170,24 +102,7 @@ function localDateString(input: Date | string | number | null | undefined): stri
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * IST-aware display timestamp.
- * Runs value through parseLeadDate first (which corrects UTC-to-IST rollover),
- * then formats for display so the CAPTURED column always shows the correct Indian date.
- */
-function formatLeadTimestamp(input: string | number | null | undefined): string {
-  if (input === null || input === undefined || input === "") return "—";
-  const d = parseLeadDate(input);
-  if (!d) return String(input);
-  return d.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
+const formatLeadTimestamp = formatTimestamp;
 
 function renderAdSourceBadge(lead: LeadRow) {
   const src = String(lead.utmSource || "").toLowerCase().trim();
@@ -345,7 +260,7 @@ export function MasterPipeline() {
     const clientFormRows: LeadRow[] = Array.isArray(dashData.clientForm?.rows)
       ? dashData.clientForm.rows.map((r: LeadRow) => ({ ...r, leadSource: "client_form" }))
       : [];
-    return deduplicateAndMergeLeads(websiteRows, clientFormRows);
+    return getMergedLeadsCached(websiteRows, clientFormRows);
   }, [dashData]);
 
   const subs = useMemo<SubscriptionRow[]>(() => {
@@ -496,19 +411,17 @@ export function MasterPipeline() {
         return { success: true, data };
       });
 
-      // 2. Write to localStorage immediately
-      setPipelineStatus(email, newStatus, role, { phone });
+      // 2. Write to backend Firestore database (and dispatches PIPELINE_CHANGED_EVENT)
+      setPipelineStatusApi(email, newStatus, role, { phone }).then((success) => {
+        if (success) {
+          invalidatePipeline();
+        }
+      });
 
       // 3. Show immediate toast feedback
       toast.success(`${meta.icon} Moved to ${meta.label}`, {
         description: name || email,
       });
-
-      // 4. Update backend Firestore database
-      const success = await setPipelineStatusApi(email, newStatus, role, { phone });
-      if (success) {
-        invalidatePipeline();
-      }
     },
     [role, invalidatePipeline, queryClient]
   );

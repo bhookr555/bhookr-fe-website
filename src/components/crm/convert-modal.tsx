@@ -62,14 +62,7 @@ export function ConvertModal({
       return { success: true, data };
     });
 
-    // 2. Immediate local storage update
-    setPipelineStatus(email, "converted", role, {
-      planType,
-      amount: amount ? Number(amount) : undefined,
-      paymentMethod,
-      notes: notes.trim() || undefined,
-    });
-
+    // 2. Database update
     const success = await setPipelineStatusApi(email, "converted", role, {
       planType,
       amount: amount ? Number(amount) : undefined,

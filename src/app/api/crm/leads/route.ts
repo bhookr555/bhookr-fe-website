@@ -6,7 +6,7 @@ import {
   isCacheFresh,
   GAS_CACHE_TTL_MS,
 } from "@/lib/crm/cache";
-import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
+import { deduplicateAndMergeLeads, getMergedLeadsCached } from "@/lib/crm/leads-aggregator";
 import type { LeadRow } from "@/lib/crm/leads";
 
 export const dynamic = "force-dynamic";
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
     : [];
 
   // Deduplicate and merge both sources
-  const deduplicatedRows = deduplicateAndMergeLeads(webRows, clientRows);
+  const deduplicatedRows = getMergedLeadsCached(webRows, clientRows);
 
   return NextResponse.json(
     {

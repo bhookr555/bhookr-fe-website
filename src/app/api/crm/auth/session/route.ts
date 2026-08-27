@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import logger from "@/lib/logger";
 
+import { signCrmRoleToken } from "@/lib/jwt-auth";
+
 const VALID_CRM_ROLES = new Set(["admin", "auditor", "manager", "telecaller"]);
 
 export async function POST(req: NextRequest) {
@@ -28,37 +30,23 @@ export async function POST(req: NextRequest) {
     // Verify token
     const decodedToken = await adminAuth.verifyIdToken(token);
     const uid = decodedToken.uid;
+    const userEmail = String(decodedToken.email ?? "").toLowerCase().trim();
 
     // Fetch user document from Firestore users collection
     const userDoc = await adminDb.collection("users").doc(uid).get();
 
-    let role: string | null = userDoc.exists ? (userDoc.data()?.role ?? null) : null;
-
-    // Auto-provision admin role for primary accounts (bhookr555@gmail.com / staff)
-    if (!role || !VALID_CRM_ROLES.has(role)) {
-      const userEmail = String(decodedToken.email ?? "").toLowerCase().trim();
-      if (
-        userEmail === "bhookr555@gmail.com" ||
-        userEmail === "bindhusri.s555@gmail.com" ||
-        userEmail.endsWith("@bhookr.com") ||
-        !userDoc.exists
-      ) {
-        role = "admin";
-        await adminDb.collection("users").doc(uid).set(
-          {
-            email: userEmail,
-            role: "admin",
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      } else {
-        return NextResponse.json(
-          { success: false, error: "Access Denied: Insufficient permissions." },
-          { status: 403 }
-        );
-      }
+    if (
+      !userDoc.exists ||
+      !userDoc.data()?.role ||
+      !VALID_CRM_ROLES.has(userDoc.data()?.role)
+    ) {
+      return NextResponse.json(
+        { success: false, error: "No CRM access assigned to this account. Contact an administrator." },
+        { status: 403 }
+      );
     }
+
+    const role = userDoc.data()!.role as string;
 
     // Establish secure cookies
     const cookieStore = await cookies();
@@ -72,8 +60,15 @@ export async function POST(req: NextRequest) {
       path: "/",
     });
 
-    // 2. Lax cookie indicating the CRM role (for frontend routing and middleware)
-    cookieStore.set("bhookr_crm_role", role, {
+    // 2. Signed HTTP-only cookie indicating the CRM role (for frontend routing and middleware)
+    const roleToken = await signCrmRoleToken({
+      role,
+      uid,
+      email: userEmail,
+    });
+
+    cookieStore.set("bhookr_crm_role", roleToken, {
+      httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 3600,

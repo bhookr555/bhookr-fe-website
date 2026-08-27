@@ -8,6 +8,7 @@ import {
 } from "@/lib/crm/cache";
 import {
   deduplicateAndMergeLeads,
+  getMergedLeadsCached,
   extractLeadName,
   extractLeadTimestamp,
 } from "@/lib/crm/leads-aggregator";
@@ -86,7 +87,7 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("leads_v6", freshDataClean, "background-swr");
+          await setCachedData("leads_v7", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] Leads refresh failed:", e);
         }
@@ -114,7 +115,7 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("client_form_v6", freshDataClean, "background-swr");
+          await setCachedData("client_form_v7", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] ClientForm refresh failed:", e);
         }
@@ -125,7 +126,7 @@ async function backgroundRefreshGasData(
   if (staleKeys.subscriptions && subsUrl) {
     tasks.push(
       fetchGas(subsUrl)
-        .then((d) => setCachedData("subscriptions_v6", d, "background-swr"))
+        .then((d) => setCachedData("subscriptions_v7", d, "background-swr"))
         .catch((e) => console.warn("[swr-bg] Subscriptions refresh failed:", e))
     );
   }
@@ -133,7 +134,7 @@ async function backgroundRefreshGasData(
   if (staleKeys.orders && ordersUrl) {
     tasks.push(
       fetchGas(ordersUrl)
-        .then((d) => setCachedData("orders_v6", normalizeOrders(d), "background-swr"))
+        .then((d) => setCachedData("orders_v7", normalizeOrders(d), "background-swr"))
         .catch((e) => console.warn("[swr-bg] Orders refresh failed:", e))
     );
   }
@@ -157,10 +158,10 @@ export async function GET(req: NextRequest) {
   // ── 2. Read all Firestore cache entries in parallel (<50ms) ───────────────
   const [cachedLeads, cachedClientForm, cachedSubs, cachedOrders] =
     await Promise.all([
-      getCachedData("leads_v6"),
-      getCachedData("client_form_v6"),
-      getCachedData("subscriptions_v6"),
-      getCachedData("orders_v6"),
+      getCachedData("leads_v7"),
+      getCachedData("client_form_v7"),
+      getCachedData("subscriptions_v7"),
+      getCachedData("orders_v7"),
     ]);
 
   const leadsData = cachedLeads?.data as { rows?: unknown[] } | undefined;
@@ -220,10 +221,10 @@ export async function GET(req: NextRequest) {
 
   const [freshLeads, freshClientForm, freshSubs, freshOrders] =
     await Promise.all([
-      getCachedData("leads_v6"),
-      getCachedData("client_form_v6"),
-      getCachedData("subscriptions_v6"),
-      getCachedData("orders_v6"),
+      getCachedData("leads_v7"),
+      getCachedData("client_form_v7"),
+      getCachedData("subscriptions_v7"),
+      getCachedData("orders_v7"),
     ]);
 
   const freshLeadsData = freshLeads?.data as { rows?: unknown[] } | undefined;

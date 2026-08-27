@@ -4,6 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { adminDb } from '@/lib/firebase/admin';
 import logger from './logger';
 
 /**
@@ -16,8 +17,7 @@ export function generateCsrfToken(): string {
 }
 
 /**
- * Store for CSRF tokens (in-memory)
- * In production, use Redis or database for distributed systems
+ * Store for CSRF tokens (in-memory with Firestore backing in production)
  */
 class CsrfTokenStore {
   private tokens: Map<string, { token: string; createdAt: number; sessionId: string }> = new Map();
@@ -42,11 +42,22 @@ class CsrfTokenStore {
     // Remove old tokens for this session if exceeding limit
     this.cleanupSessionTokens(sessionId);
     
-    this.tokens.set(key, {
+    const record = {
       token,
       createdAt: Date.now(),
       sessionId,
-    });
+    };
+
+    this.tokens.set(key, record);
+
+    if (adminDb) {
+      const docId = Buffer.from(key).toString('base64url');
+      adminDb
+        .collection('csrf_tokens')
+        .doc(docId)
+        .set(record)
+        .catch((e) => logger.warn('[csrf] Firestore write error:', e));
+    }
     
     return token;
   }
@@ -66,6 +77,10 @@ class CsrfTokenStore {
     const now = Date.now();
     if (now - stored.createdAt > this.TOKEN_LIFETIME) {
       this.tokens.delete(key);
+      if (adminDb) {
+        const docId = Buffer.from(key).toString('base64url');
+        adminDb.collection('csrf_tokens').doc(docId).delete().catch(() => {});
+      }
       return false;
     }
     
@@ -87,6 +102,10 @@ class CsrfTokenStore {
     
     if (valid) {
       this.tokens.delete(key);
+      if (adminDb) {
+        const docId = Buffer.from(key).toString('base64url');
+        adminDb.collection('csrf_tokens').doc(docId).delete().catch(() => {});
+      }
     }
     
     return valid;
@@ -320,8 +339,7 @@ export function verifyDoubleSubmitCookie(request: NextRequest): boolean {
   return mismatch === 0;
 }
 
-export default {
-  generateCsrfToken,
+const csrfUtils = {
   createCsrfToken,
   verifyCsrfToken,
   requireCsrfToken,
@@ -332,3 +350,4 @@ export default {
   CsrfError,
 };
 
+export default csrfUtils;

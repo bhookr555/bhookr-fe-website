@@ -17,6 +17,24 @@ interface ClientTransformationProps {
   index: number;
 }
 
+function renderSafeTestimonial(html: string): React.ReactNode {
+  if (!html) return null;
+  const parts = html.split(/(<strong[^>]*>.*?<\/strong>)/g);
+  return parts.map((part, idx) => {
+    const match = part.match(/^<strong(?:\s+class=["']([^"']*)["'])?>([\s\S]*?)<\/strong>$/);
+    if (match) {
+      const className = match[1] || "text-[#E31E24] font-black";
+      const innerText = match[2] || "";
+      return (
+        <strong key={idx} className={className}>
+          {innerText}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
 export function ClientTransformation({
   beforeImage = '/transformations/placeholder-before.jpg',
   afterImage = '/transformations/placeholder-after.jpg',
@@ -118,8 +136,9 @@ export function ClientTransformation({
                         ? 'line-clamp-6 sm:line-clamp-7 md:line-clamp-8 overflow-hidden' 
                         : ''
                     }`}
-                    dangerouslySetInnerHTML={{ __html: testimonial }}
-                  />
+                  >
+                    {renderSafeTestimonial(testimonial)}
+                  </div>
                   
                   {/* Read More / Read Less Button */}
                   {isLongText && (

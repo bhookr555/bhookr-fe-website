@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Auto-fill address details from historical Firestore records (orders or subscriptions)
     let line1 = "N/A - Meal Subscription Customer";
-    let line2 = "";
+    const line2 = "";
     let city = "Hyderabad";
     let state = "Telangana";
     let zipcode = "500092";

@@ -99,7 +99,7 @@ async function fetchPipeline(): Promise<PipelineResponse> {
  * Old localStorage entries stored under a different version are automatically
  * discarded on the next page load — no manual Refresh needed.
  */
-const CACHE_VERSION = "v6"; // bump on each fix that changes lead data shape
+const CACHE_VERSION = "v7"; // bump on each fix that changes lead data shape
 const LS_CACHE_KEY = `bhookr_crm_dash_cache_${CACHE_VERSION}`;
 
 // Purge all old versioned cache keys except the current one

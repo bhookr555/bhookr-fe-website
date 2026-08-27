@@ -7,7 +7,7 @@ import {
   formatINR,
   type SubscriptionRow,
 } from "@/lib/crm/subscriptions";
-import { formatTimestamp, humanize } from "@/lib/crm/leads";
+import { formatTimestamp, humanize, tsValue } from "@/lib/crm/leads";
 import { useSubscriptions, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
 import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
@@ -35,12 +35,6 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "amount-high", label: "Amount: high → low" },
   { value: "amount-low", label: "Amount: low → high" },
 ];
-
-function tsValue(v: string | number | null | undefined): number {
-  if (v === null || v === undefined || v === "") return 0;
-  const d = new Date(v as string | number);
-  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-}
 
 function renderCell(row: SubscriptionRow, key: keyof SubscriptionRow): React.ReactNode {
   const value = row[key];

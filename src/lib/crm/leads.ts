@@ -72,15 +72,88 @@ export function humanize(value: string | number | boolean | null | undefined): s
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function formatTimestamp(value: string | number | null | undefined): string {
+export function parseLeadDate(input: Date | string | number | null | undefined): Date | null {
+  if (input === null || input === undefined || input === "") return null;
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input;
+
+  const str = String(input).trim();
+  if (!str) return null;
+
+  // Handle epoch milliseconds or seconds string (e.g. "1710000000000")
+  if (/^\d{10,13}$/.test(str)) {
+    const num = Number(str);
+    const d = new Date(num > 1e11 ? num : num * 1000);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+
+  // Handle ISO strings like "2026-08-17T18:30:00.000Z" or "2026-08-17T08:18:51.422Z" or "2026-08-17 18:30:00"
+  const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?)?/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1] || "0", 10);
+    const month = parseInt(isoMatch[2] || "0", 10);
+    const day = parseInt(isoMatch[3] || "0", 10);
+    const hh = parseInt(isoMatch[4] || "12", 10);
+    const mm = parseInt(isoMatch[5] || "0", 10);
+    const ss = parseInt(isoMatch[6] || "0", 10);
+
+    // If 18:30 UTC (standard Google Apps Script UTC rollover for midnight IST), adjust to 12:00 PM local
+    if (hh === 18 && mm === 30) {
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+    return new Date(year, month - 1, day, hh, mm, ss);
+  }
+
+  // Handle slash or dash dates like "18/08/2026", "18-08-2026", "8/17/2026", "17/8/2026 11:24:27"
+  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:\s+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?)?/);
+  if (dateMatch) {
+    const p1 = parseInt(dateMatch[1] || "0", 10);
+    const p2 = parseInt(dateMatch[2] || "0", 10);
+    const p3 = parseInt(dateMatch[3] || "0", 10);
+    const hh = parseInt(dateMatch[4] || "12", 10);
+    const mm = parseInt(dateMatch[5] || "0", 10);
+    const ss = parseInt(dateMatch[6] || "0", 10);
+
+    const year = p3 > 1000 ? p3 : (p1 > 1000 ? p1 : p3 + 2000);
+
+    // D/M/YYYY e.g. 18/8/2026 (p1 > 12 -> p1 is day, p2 is month)
+    if (p1 > 12) {
+      return new Date(year, p2 - 1, p1, hh, mm, ss);
+    }
+    // M/D/YYYY e.g. 8/18/2026 (p2 > 12 -> p2 is day, p1 is month)
+    if (p2 > 12) {
+      return new Date(year, p1 - 1, p2, hh, mm, ss);
+    }
+
+    // Default for ambiguity (e.g. 05/04/2026): in Indian context (DD/MM/YYYY), p1 is day, p2 is month
+    if (p3 > 1000) {
+      return new Date(year, p2 - 1, p1, hh, mm, ss);
+    }
+    return new Date(year, p1 - 1, p2, hh, mm, ss);
+  }
+
+  const stdDate = new Date(str);
+  if (!Number.isNaN(stdDate.getTime())) return stdDate;
+
+  return null;
+}
+
+export function tsValue(v: string | number | Date | null | undefined): number {
+  if (v === null || v === undefined || v === "") return 0;
+  const d = parseLeadDate(v);
+  return d ? d.getTime() : 0;
+}
+
+export function formatTimestamp(value: string | number | Date | null | undefined): string {
   if (value === null || value === undefined || value === "") return "—";
-  const d = new Date(value as string | number);
-  if (Number.isNaN(d.getTime())) return String(value);
+  const d = parseLeadDate(value);
+  if (!d) return String(value);
   return d.toLocaleString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
 }
+

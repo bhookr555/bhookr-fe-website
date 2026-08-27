@@ -4,6 +4,8 @@ import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { CRM_DEMO_PASSWORD, type CrmRole } from "@/lib/crm/auth";
 import logger from "@/lib/logger";
 
+import { signCrmRoleToken } from "@/lib/jwt-auth";
+
 const VALID_CRM_ROLES = new Set(["admin", "auditor", "manager", "telecaller"]);
 
 export async function POST(req: NextRequest) {
@@ -68,18 +70,16 @@ export async function POST(req: NextRequest) {
     if (idToken && uid && adminDb && adminAuth) {
       // Fetch staff record from Firestore
       const userDoc = await adminDb.collection("users").doc(uid).get();
-      if (userDoc.exists && userDoc.data()?.role && VALID_CRM_ROLES.has(userDoc.data()?.role)) {
+      if (
+        userDoc.exists &&
+        userDoc.data()?.role &&
+        VALID_CRM_ROLES.has(userDoc.data()?.role)
+      ) {
         userRole = userDoc.data()!.role as CrmRole;
       } else {
-        // Auto-provision admin role for primary accounts
-        userRole = "admin";
-        await adminDb.collection("users").doc(uid).set(
-          {
-            email: trimmedEmail,
-            role: "admin",
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
+        return NextResponse.json(
+          { success: false, error: "No CRM access assigned to this account. Contact an administrator." },
+          { status: 403 }
         );
       }
     } else {
@@ -105,7 +105,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    cookieStore.set("bhookr_crm_role", userRole, {
+    const roleToken = await signCrmRoleToken({
+      role: userRole,
+      uid: uid || undefined,
+      email: trimmedEmail,
+    });
+
+    cookieStore.set("bhookr_crm_role", roleToken, {
+      httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 3600,

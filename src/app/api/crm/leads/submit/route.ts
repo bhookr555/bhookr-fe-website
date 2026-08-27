@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         };
 
         // Try redirect: "manual" first to prevent fetch from turning POST into GET on 302
-        let sheetRes = await fetch(leadsSheetUrl, {
+        const sheetRes = await fetch(leadsSheetUrl, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify(preparedData),

@@ -8,7 +8,7 @@ import {
   type CustomerAggregate,
   type SubscriptionRow,
 } from "@/lib/crm/subscriptions";
-import { formatTimestamp, humanize } from "@/lib/crm/leads";
+import { formatTimestamp, humanize, tsValue } from "@/lib/crm/leads";
 import { NoteModal } from "@/components/crm/note-modal";
 import { useSubscriptions, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -32,12 +32,6 @@ const STATUS_OPTIONS = [
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
 ];
-
-function tsValue(v: string | null | undefined): number {
-  if (!v) return 0;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-}
 
 function statusBadge(status: string): React.ReactNode {
   const s = String(status || "").toLowerCase();

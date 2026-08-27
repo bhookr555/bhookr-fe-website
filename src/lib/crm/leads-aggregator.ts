@@ -1,4 +1,5 @@
 import type { LeadRow } from "@/lib/crm/leads";
+import { tsValue, parseLeadDate } from "@/lib/crm/leads";
 
 /** Extended type that tracks all source labels when a lead is merged */
 export type MergedLeadRow = LeadRow & {
@@ -94,9 +95,9 @@ export function mergeLeadRows(primary: LeadRow, secondary: LeadRow): LeadRow {
   }
 
   // Keep earlier timestamp as initial contact date
-  const tsP = new Date(primary.timestamp).getTime();
-  const tsS = new Date(secondary.timestamp).getTime();
-  if (!Number.isNaN(tsS) && (Number.isNaN(tsP) || tsS < tsP)) {
+  const tsP = tsValue(primary.timestamp);
+  const tsS = tsValue(secondary.timestamp);
+  if (tsS > 0 && (tsP === 0 || tsS < tsP)) {
     merged.timestamp = secondary.timestamp;
   }
 
@@ -201,13 +202,7 @@ export function deduplicateAndMergeLeads(
   const allRaw = [...normalizedWeb, ...normalizedClient];
 
   // Sort newest first before merging so primary = latest submission
-  allRaw.sort((a, b) => {
-    const tsA = new Date(String(a.timestamp)).getTime();
-    const tsB = new Date(String(b.timestamp)).getTime();
-    const valA = Number.isNaN(tsA) ? 0 : tsA;
-    const valB = Number.isNaN(tsB) ? 0 : tsB;
-    return valB - valA;
-  });
+  allRaw.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
 
   for (const row of allRaw) {
     const existingIdx = findExistingIndex(row);
@@ -238,13 +233,55 @@ export function deduplicateAndMergeLeads(
   }
 
   // Sort final merged list newest first
-  merged.sort((a, b) => {
-    const tsA = new Date(String(a.timestamp)).getTime();
-    const tsB = new Date(String(b.timestamp)).getTime();
-    const valA = Number.isNaN(tsA) ? 0 : tsA;
-    const valB = Number.isNaN(tsB) ? 0 : tsB;
-    return valB - valA;
-  });
+  merged.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
 
   return merged;
+}
+
+export const MERGED_LEADS_CACHE_TTL_MS = 60 * 1000;
+
+interface MergedLeadsCacheStore {
+  fingerprint: string;
+  timestamp: number;
+  data: MergedLeadRow[];
+}
+
+let memoryMergedLeadsCache: MergedLeadsCacheStore | null = null;
+
+function computeLeadsFingerprint(web: LeadRow[], client: LeadRow[]): string {
+  const webLen = web.length;
+  const clientLen = client.length;
+  const webFirst = webLen > 0 ? `${web[0]?.email || ""}:${web[0]?.phoneNumber || ""}:${web[0]?.timestamp || ""}` : "";
+  const webLast = webLen > 0 ? `${web[webLen - 1]?.email || ""}:${web[webLen - 1]?.phoneNumber || ""}:${web[webLen - 1]?.timestamp || ""}` : "";
+  const clientFirst = clientLen > 0 ? `${client[0]?.email || ""}:${client[0]?.phoneNumber || ""}:${client[0]?.timestamp || ""}` : "";
+  const clientLast = clientLen > 0 ? `${client[clientLen - 1]?.email || ""}:${client[clientLen - 1]?.phoneNumber || ""}:${client[clientLen - 1]?.timestamp || ""}` : "";
+  return `w${webLen}_${webFirst}_${webLast}_c${clientLen}_${clientFirst}_${clientLast}`;
+}
+
+/**
+ * Cache wrapper around deduplicateAndMergeLeads to avoid re-running expensive matching loops
+ * when underlying raw leads are unchanged within the cache window.
+ */
+export function getMergedLeadsCached(
+  websiteLeads: LeadRow[] = [],
+  clientFormLeads: LeadRow[] = []
+): MergedLeadRow[] {
+  const fp = computeLeadsFingerprint(websiteLeads, clientFormLeads);
+  const now = Date.now();
+
+  if (
+    memoryMergedLeadsCache &&
+    memoryMergedLeadsCache.fingerprint === fp &&
+    now - memoryMergedLeadsCache.timestamp < MERGED_LEADS_CACHE_TTL_MS
+  ) {
+    return memoryMergedLeadsCache.data;
+  }
+
+  const result = deduplicateAndMergeLeads(websiteLeads, clientFormLeads);
+  memoryMergedLeadsCache = {
+    fingerprint: fp,
+    timestamp: now,
+    data: result,
+  };
+  return result;
 }

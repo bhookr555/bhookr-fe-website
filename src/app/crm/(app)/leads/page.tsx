@@ -14,9 +14,10 @@ import {
   LEAD_COLUMNS,
   formatTimestamp,
   humanize,
+  tsValue,
   type LeadRow,
 } from "@/lib/crm/leads";
-import { deduplicateAndMergeLeads } from "@/lib/crm/leads-aggregator";
+import { deduplicateAndMergeLeads, getMergedLeadsCached } from "@/lib/crm/leads-aggregator";
 import {
   type SubscriptionRow,
 } from "@/lib/crm/subscriptions";
@@ -49,12 +50,6 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "oldest", label: "Oldest first" },
   { value: "name", label: "Name A–Z" },
 ];
-
-function tsValue(v: string | number | null | undefined): number {
-  if (v === null || v === undefined || v === "") return 0;
-  const d = new Date(v as string | number);
-  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-}
 
 function renderCell(row: LeadRow, key: keyof LeadRow): React.ReactNode {
   const value = row[key];
@@ -160,7 +155,7 @@ export default function CrmLeadsPage() {
     const clientFormRows: LeadRow[] = Array.isArray(dashData.clientForm?.rows)
       ? dashData.clientForm.rows.map((r: LeadRow) => ({ ...r, leadSource: "client_form" }))
       : [];
-    return deduplicateAndMergeLeads(websiteRows, clientFormRows);
+    return getMergedLeadsCached(websiteRows, clientFormRows);
   }, [dashData]);
 
   const subs = useMemo<SubscriptionRow[]>(() => {

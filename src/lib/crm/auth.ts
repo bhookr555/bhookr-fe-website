@@ -47,8 +47,7 @@ const STORAGE_KEY = "bhookr_crm_role";
 export function loginAs(role: CrmRole): void {
   if (typeof window === "undefined") return;
   sessionStorage.setItem(STORAGE_KEY, role);
-  // Cookie so the middleware (which runs on the edge) can read it too.
-  document.cookie = `${COOKIE_NAME}=${role}; path=/; SameSite=Lax`;
+  // Note: Cookie is set server-side (httpOnly) via login/session API routes.
 }
 
 export function getCurrentRole(): CrmRole | null {

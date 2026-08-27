@@ -4,6 +4,8 @@
  * For production, consider using Redis-based rate limiting (Upstash, Vercel KV, etc.)
  */
 
+import { adminDb } from '@/lib/firebase/admin';
+
 interface RateLimitRecord {
   count: number;
   resetAt: number;
@@ -43,10 +45,16 @@ class RateLimiter {
     // No record or expired record
     if (!record || now > record.resetAt) {
       const resetAt = now + windowMs;
-      this.records.set(identifier, {
+      const newRecord = {
         count: 1,
         resetAt,
-      });
+      };
+      this.records.set(identifier, newRecord);
+
+      if (adminDb) {
+        const docId = Buffer.from(identifier).toString('base64url');
+        adminDb.collection('rate_limits').doc(docId).set(newRecord).catch(() => {});
+      }
 
       return {
         success: true,
@@ -70,6 +78,11 @@ class RateLimiter {
     record.count++;
     this.records.set(identifier, record);
 
+    if (adminDb) {
+      const docId = Buffer.from(identifier).toString('base64url');
+      adminDb.collection('rate_limits').doc(docId).set(record).catch(() => {});
+    }
+
     return {
       success: true,
       limit,
@@ -83,6 +96,10 @@ class RateLimiter {
    */
   reset(identifier: string): void {
     this.records.delete(identifier);
+    if (adminDb) {
+      const docId = Buffer.from(identifier).toString('base64url');
+      adminDb.collection('rate_limits').doc(docId).delete().catch(() => {});
+    }
   }
 
   /**

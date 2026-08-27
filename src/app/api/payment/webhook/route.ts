@@ -59,14 +59,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify signature (optional but recommended for production)
-    if (process.env.RAZORPAY_WEBHOOK_SECRET) {
-      const isValid = verifyWebhookSignature(bodyText, signature);
-      
-      if (!isValid) {
-        logger.security('[Webhook] Invalid Razorpay signature');
+    // Verify signature (required in production)
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      if (process.env.NODE_ENV === "production") {
+        logger.error("[Webhook] RAZORPAY_WEBHOOK_SECRET missing in production");
         return NextResponse.json(
-          { error: 'Invalid signature' },
+          { error: "Webhook not configured" },
+          { status: 500 }
+        );
+      }
+      logger.warn("[Webhook] RAZORPAY_WEBHOOK_SECRET is missing in non-production environment. Signature check bypassed.");
+    } else {
+      const isValid = verifyWebhookSignature(bodyText, signature);
+      if (!isValid) {
+        logger.security("[Webhook] Invalid Razorpay signature");
+        return NextResponse.json(
+          { error: "Invalid signature" },
           { status: 401 }
         );
       }
@@ -102,7 +111,7 @@ export async function POST(request: NextRequest) {
           event,
         });
         
-        const webhookRazorpayData: any = {
+        const webhookRazorpayData: Record<string, unknown> = {
           paymentId: paymentEntity.id,
           orderId: paymentEntity.order_id,
         };
@@ -154,7 +163,7 @@ export async function POST(request: NextRequest) {
       const orderId = paymentEntity.notes?.orderId;
       
       if (orderId) {
-        const failedRazorpayData: any = {
+        const failedRazorpayData: Record<string, unknown> = {
           paymentId: paymentEntity.id,
           orderId: paymentEntity.order_id,
         };

@@ -86,13 +86,28 @@ async function verifyFirebaseToken(token: string): Promise<AuthenticatedUser | n
   }
 }
 
+import { hmacSha256 } from '@/lib/session';
+
 /**
- * Parse custom session cookie (base64 encoded JSON)
+ * Parse custom session cookie (base64 encoded JSON + HMAC signature)
  */
 function parseSessionCookie(cookie: string): AuthenticatedUser | null {
   try {
-    const decoded = Buffer.from(cookie, 'base64').toString('utf-8');
-    const session = JSON.parse(decoded);
+    const parts = cookie.split('.');
+    if (parts.length !== 2) return null;
+    const [base64Data, signature] = parts;
+    if (!base64Data || !signature) return null;
+
+    const jsonStr = Buffer.from(base64Data, 'base64').toString('utf-8');
+    const secret = process.env.CRM_SESSION_SECRET || process.env.NEXT_PUBLIC_CRM_SESSION_SECRET || "bhookr_session_secret_default_key";
+    const expectedSig = hmacSha256(jsonStr, secret);
+
+    if (signature !== expectedSig) {
+      logger.warn('Custom session cookie signature verification failed');
+      return null;
+    }
+
+    const session = JSON.parse(jsonStr);
     
     // Validate session structure
     if (!session.userId || !session.email) {
@@ -351,22 +366,26 @@ export function withRole(
   };
 }
 
+import { verifyCrmRoleToken } from "@/lib/jwt-auth";
+
 /**
  * Verify CRM Staff access.
  * If Firebase Admin is not initialized (Local Dev Bypass), this returns success.
- * If initialized, it checks if the user is authenticated and has a valid CRM role.
+ * If initialized, it checks if the user has a valid signed CRM role token or Firebase session.
  */
 export async function authorizeCrmStaff(request: NextRequest): Promise<{ authorized: boolean; error?: string; role?: string }> {
-  // If Firebase Admin is not configured, we are in Local Dev Bypass mode
-  if (!adminAuth) {
+  // If Firebase Admin is not configured, we are in Local Dev Bypass mode (dev mode only)
+  if (!adminAuth && process.env.NODE_ENV !== "production") {
     return { authorized: true, role: "admin" }; 
   }
 
-  // Temporary fallback bypass for prototype: accept valid bhookr_crm_role cookie directly
-  const crmRole = request.cookies.get("bhookr_crm_role")?.value;
-  const VALID_ROLES = new Set(["admin", "auditor", "manager", "telecaller"]);
-  if (crmRole && VALID_ROLES.has(crmRole)) {
-    return { authorized: true, role: crmRole };
+  // Verify signed HMAC JWT in bhookr_crm_role cookie
+  const crmRoleCookie = request.cookies.get("bhookr_crm_role")?.value;
+  if (crmRoleCookie) {
+    const verified = await verifyCrmRoleToken(crmRoleCookie);
+    if (verified) {
+      return { authorized: true, role: verified.role };
+    }
   }
 
   try {
@@ -377,7 +396,7 @@ export async function authorizeCrmStaff(request: NextRequest): Promise<{ authori
   } catch (error: any) {
     return { 
       authorized: false, 
-      error: error.message || "Unauthorized access" 
+      error: error?.message || "Unauthorized access" 
     };
   }
 }
