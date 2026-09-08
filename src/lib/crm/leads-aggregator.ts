@@ -163,19 +163,21 @@ export function deduplicateAndMergeLeads(
       ...r,
       name: extractLeadName(raw) || r.name || "",
       timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
-      leadSource: r.leadSource || "website",
-      allSources: [sourceLabel(r.leadSource || "website")],
+      leadSource: "website",
+      allSources: ["Website Lead"],
     };
   });
 
   const normalizedClient: MergedLeadRow[] = clientFormLeads.map((r) => {
     const raw = r as Record<string, any>;
+    const hasUtm = !!(raw.utmSource || raw.utmSubSource);
+    const src = hasUtm ? "website" : "client_form";
     return {
       ...r,
       name: extractLeadName(raw) || r.name || "",
       timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
-      leadSource: r.leadSource || "client_form",
-      allSources: [sourceLabel(r.leadSource || "client_form")],
+      leadSource: src,
+      allSources: [sourceLabel(src)],
     };
   });
 

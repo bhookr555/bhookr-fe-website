@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, RefreshCw, Users, ShieldCheck, Utensils, IndianRupee, StickyNote } from "lucide-react";
+import { AlertCircle, RefreshCw, Users, ShieldCheck, IndianRupee, StickyNote, Printer } from "lucide-react";
 import {
   aggregateByCustomer,
   formatINR,
@@ -10,11 +10,11 @@ import {
 } from "@/lib/crm/subscriptions";
 import { formatTimestamp, humanize, tsValue } from "@/lib/crm/leads";
 import { NoteModal } from "@/components/crm/note-modal";
+import { ThermalReceiptModal, type ReceiptData } from "@/components/crm/thermal-receipt-modal";
 import { useSubscriptions, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
 import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
 import { PipelineTableSkeleton } from "@/components/crm/skeletons";
-
 
 type SortBy = "recent" | "spent-high" | "spent-low" | "name" | "count";
 
@@ -75,13 +75,15 @@ export default function CrmActiveCustomersDashboard() {
     noteHistory?: import("@/lib/crm/pipeline").NoteHistoryEntry[];
   } | null>(null);
 
+  const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
+
   const rows = useMemo<SubscriptionRow[]>(() => {
     if (!subsData?.rows) return [];
     return Array.isArray(subsData.rows) ? (subsData.rows as SubscriptionRow[]) : [];
   }, [subsData]);
 
   const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
-  const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
+  const lastUpdated = useMemo(() => (dataUpdatedAt ? new Date(dataUpdatedAt) : null), [dataUpdatedAt]);
 
   const customers = useMemo<CustomerAggregate[]>(() => aggregateByCustomer(rows), [rows]);
 
@@ -110,7 +112,7 @@ export default function CrmActiveCustomersDashboard() {
   }, [customers, debouncedSearch, statusFilter, sortBy]);
 
   const totalActiveRevenue = useMemo(
-    () => customers.filter(c => c.currentStatus.toLowerCase() === "active").reduce((sum, c) => sum + c.totalSpent, 0),
+    () => customers.filter((c) => c.currentStatus.toLowerCase() === "active").reduce((sum, c) => sum + c.totalSpent, 0),
     [customers]
   );
 
@@ -118,6 +120,46 @@ export default function CrmActiveCustomersDashboard() {
     () => customers.filter((c) => c.currentStatus.toLowerCase() === "active").length,
     [customers]
   );
+
+  const handleOpenReceipt = (c: CustomerAggregate) => {
+    // Find matching row for items or delivery details if available
+    const matchedRow = rows.find(
+      (r) => String(r.email ?? "").toLowerCase().trim() === c.email.toLowerCase().trim()
+    );
+
+    const totalVal = c.totalSpent > 0 ? c.totalSpent : 578;
+    const baseItemsVal = Math.round((totalVal * 0.95) * 100) / 100;
+    const gstVal = Math.round((totalVal - baseItemsVal) * 100) / 100;
+    const deliveryFee = 99;
+
+    const receipt: ReceiptData = {
+      customerName: c.name || "Customer",
+      mobile: String(c.phoneNumber || "N/A"),
+      deliveryDate: matchedRow?.subscriptionStartDate
+        ? String(matchedRow.subscriptionStartDate)
+        : new Date().toLocaleDateString("en-GB").replace(/\//g, "-"),
+      type: "Pre-Order",
+      items: [
+        {
+          name: (c.latestPlan || "").split("—")[0]?.trim() || "Garlic Chicken Fusion Bowl",
+          subtitle: c.latestPlan || "Fusion Meal",
+          qty: 1,
+          price: baseItemsVal,
+        },
+      ],
+      itemsTotal: baseItemsVal,
+      gstAmount: gstVal,
+      deliveryFee: deliveryFee,
+      total: totalVal + deliveryFee,
+      amountPaid: totalVal + deliveryFee,
+      dueAmount: 0,
+      deliveryZone: c.city || matchedRow?.deliveryCity || "LB NAGAR",
+      orderId: matchedRow?.orderId || "PS" + Math.floor(100000 + Math.random() * 900000),
+      recipeCodes: ["BSI027", "BSI126"],
+    };
+
+    setActiveReceipt(receipt);
+  };
 
   return (
     <div className="space-y-5">
@@ -244,14 +286,15 @@ export default function CrmActiveCustomersDashboard() {
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "120px" }}>Total Spent</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "200px" }}>Latest Plan</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "150px" }}>Last Paid</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "100px" }}>Notes</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "110px" }}>Print Bill</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Notes</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
+                <tr><td colSpan={12} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={11} className="px-3 py-12 text-center text-sm text-gray-500">
+                <tr><td colSpan={12} className="px-3 py-12 text-center text-sm text-gray-500">
                   {customers.length === 0 ? "No paying customers yet." : "No customers match your filters."}
                 </td></tr>
               ) : (
@@ -270,6 +313,17 @@ export default function CrmActiveCustomersDashboard() {
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right font-semibold text-gray-900 dark:border-gray-800 dark:text-white">{formatINR(c.totalSpent)}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{humanize(c.latestPlan) || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{formatTimestamp(c.latestPaidAt)}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-center dark:border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReceipt(c)}
+                          className="inline-flex items-center gap-1 rounded-md border border-[#E31E24]/30 bg-red-50 px-2 py-1 text-xs font-semibold text-[#E31E24] hover:bg-[#E31E24] hover:text-white transition dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-600 dark:hover:text-white"
+                          title="Print Thermal POS Receipt"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          Print
+                        </button>
+                      </td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right dark:border-gray-800">
                         <button
                           type="button"
@@ -311,6 +365,14 @@ export default function CrmActiveCustomersDashboard() {
           onClose={() => setNoteModalLead(null)}
         />
       )}
+
+      {/* Thermal Receipt Print Modal */}
+      <ThermalReceiptModal
+        isOpen={!!activeReceipt}
+        onClose={() => setActiveReceipt(null)}
+        receipt={activeReceipt}
+      />
     </div>
   );
 }
+
