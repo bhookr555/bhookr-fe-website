@@ -9,14 +9,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const SAMPLE_SHEET_ROWS = [
+// Exact row layout from Google Sheet 1QGOfVihcDcaEhVJMn960zM0u0cenSyw_DHPYy6hE38E ("Sample print sheet")
+const SAMPLE_PRINT_SHEET_ROWS = [
   {
     Id: "PS00001",
     name: "Shiva",
     "phone number": "8186939526",
     location: "idly street",
     zone: "lb nagar",
-    Status: "Active",
+    Status: "Priority / Active",
     Plan: "elite",
     Type: "veg",
     Meal: "bf",
@@ -27,78 +28,6 @@ const SAMPLE_SHEET_ROWS = [
     "GST (5%)": "28.90",
     DeliveryFee: "99.00",
     TOTAL: "606.90",
-  },
-  {
-    Id: "PS00002",
-    name: "Radhika",
-    "phone number": "7019194188",
-    location: "LB Nagar Main Road",
-    zone: "lb nagar",
-    Status: "Active",
-    Plan: "pro",
-    Type: "non-veg",
-    Meal: "lunch, dinner",
-    goal: "muscle gain",
-    Customizations: "no sugar",
-    Inspection: "done",
-    "Items Total": "578.00",
-    "GST (5%)": "28.90",
-    DeliveryFee: "99.00",
-    TOTAL: "606.90",
-  },
-  {
-    Id: "PS00003",
-    name: "Nirmit Patil",
-    "phone number": "9082619249",
-    location: "Banjara Hills Rd 12",
-    zone: "banjara hills",
-    Status: "Active",
-    Plan: "elite",
-    Type: "veg",
-    Meal: "bf, lunch, dinner",
-    goal: "fitness",
-    Customizations: "high protein",
-    Inspection: "done",
-    "Items Total": "12518.00",
-    "GST (5%)": "625.90",
-    DeliveryFee: "99.00",
-    TOTAL: "13242.90",
-  },
-  {
-    Id: "PS00004",
-    name: "Neha Pateriya",
-    "phone number": "9834782336",
-    location: "Jubilee Hills Check Post",
-    zone: "jubilee hills",
-    Status: "Active",
-    Plan: "standard",
-    Type: "veg",
-    Meal: "bf",
-    goal: "weight loss",
-    Customizations: "low carb",
-    Inspection: "done",
-    "Items Total": "11888.00",
-    "GST (5%)": "594.40",
-    DeliveryFee: "99.00",
-    TOTAL: "12581.40",
-  },
-  {
-    Id: "PS00005",
-    name: "Sai Bharadwaj",
-    "phone number": "7387954773",
-    location: "Madhapur Metro",
-    zone: "hitech city",
-    Status: "Active",
-    Plan: "7 Days",
-    Type: "non-veg",
-    Meal: "dinner",
-    goal: "maintenance",
-    Customizations: "no dairy",
-    Inspection: "done",
-    "Items Total": "1784.00",
-    "GST (5%)": "89.20",
-    DeliveryFee: "99.00",
-    TOTAL: "1972.20",
   },
 ];
 
@@ -123,8 +52,10 @@ export async function GET(req: NextRequest) {
   }
 
   const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
+  const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
 
-  if (url) {
+  // Only fetch from upstream if URL is configured AND is not the old subscriptions sheet URL
+  if (url && url !== subsUrl) {
     try {
       const upstream = await fetch(`${url}?action=list`, {
         method: "GET",
@@ -145,23 +76,24 @@ export async function GET(req: NextRequest) {
         }
       }
     } catch (err) {
-      console.warn("[active_customers] Upstream fetch failed, falling back to sample rows:", err);
+      console.warn("[active_customers] Upstream fetch failed, serving sample print sheet:", err);
     }
   }
 
-  // Fallback response with the sample print sheet structure
-  const fallbackData = {
+  // Strictly serve sample print sheet data matching 1QGOfVihcDcaEhVJMn960zM0u0cenSyw_DHPYy6hE38E
+  const sampleData = {
     success: true,
-    rows: SAMPLE_SHEET_ROWS,
-    total: SAMPLE_SHEET_ROWS.length,
+    rows: SAMPLE_PRINT_SHEET_ROWS,
+    total: SAMPLE_PRINT_SHEET_ROWS.length,
     source: "sample_print_sheet",
   };
 
-  setCachedData("active_customers", fallbackData).catch((e) =>
-    console.warn("[active_customers] Cache fallback write failed:", e)
+  setCachedData("active_customers", sampleData).catch((e) =>
+    console.warn("[active_customers] Cache sample write failed:", e)
   );
 
-  return NextResponse.json(fallbackData, {
-    headers: { "X-Cache": "FALLBACK", "Cache-Control": "private, max-age=0" },
+  return NextResponse.json(sampleData, {
+    headers: { "X-Cache": "SAMPLE_PRINT_SHEET", "Cache-Control": "private, max-age=0" },
   });
 }
+
