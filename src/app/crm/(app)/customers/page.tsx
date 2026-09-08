@@ -116,6 +116,99 @@ function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRo
   });
 }
 
+const SAMPLE_SHEET_ROWS = [
+  {
+    Id: "PS00001",
+    name: "Shiva",
+    "phone number": "8186939526",
+    location: "idly street",
+    zone: "lb nagar",
+    Status: "Active",
+    Plan: "elite",
+    Type: "veg",
+    Meal: "bf",
+    goal: "weight loss",
+    Customizations: "yes",
+    Inspection: "done",
+    "Items Total": "578.00",
+    "GST (5%)": "28.90",
+    DeliveryFee: "99.00",
+    TOTAL: "606.90",
+  },
+  {
+    Id: "PS00002",
+    name: "Radhika",
+    "phone number": "7019194188",
+    location: "LB Nagar Main Road",
+    zone: "lb nagar",
+    Status: "Active",
+    Plan: "pro",
+    Type: "non-veg",
+    Meal: "lunch, dinner",
+    goal: "muscle gain",
+    Customizations: "no sugar",
+    Inspection: "done",
+    "Items Total": "578.00",
+    "GST (5%)": "28.90",
+    DeliveryFee: "99.00",
+    TOTAL: "606.90",
+  },
+  {
+    Id: "PS00003",
+    name: "Nirmit Patil",
+    "phone number": "9082619249",
+    location: "Banjara Hills Rd 12",
+    zone: "banjara hills",
+    Status: "Active",
+    Plan: "elite",
+    Type: "veg",
+    Meal: "bf, lunch, dinner",
+    goal: "fitness",
+    Customizations: "high protein",
+    Inspection: "done",
+    "Items Total": "12518.00",
+    "GST (5%)": "625.90",
+    DeliveryFee: "99.00",
+    TOTAL: "13242.90",
+  },
+  {
+    Id: "PS00004",
+    name: "Neha Pateriya",
+    "phone number": "9834782336",
+    location: "Jubilee Hills Check Post",
+    zone: "jubilee hills",
+    Status: "Active",
+    Plan: "standard",
+    Type: "veg",
+    Meal: "bf",
+    goal: "weight loss",
+    Customizations: "low carb",
+    Inspection: "done",
+    "Items Total": "11888.00",
+    "GST (5%)": "594.40",
+    DeliveryFee: "99.00",
+    TOTAL: "12581.40",
+  },
+  {
+    Id: "PS00005",
+    name: "Sai Bharadwaj",
+    "phone number": "7387954773",
+    location: "Madhapur Metro",
+    zone: "hitech city",
+    Status: "Active",
+    Plan: "7 Days",
+    Type: "non-veg",
+    Meal: "dinner",
+    goal: "maintenance",
+    Customizations: "no dairy",
+    Inspection: "done",
+    "Items Total": "1784.00",
+    "GST (5%)": "89.20",
+    DeliveryFee: "99.00",
+    TOTAL: "1972.20",
+  },
+];
+
 export default function CrmActiveCustomersDashboard() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -125,16 +218,12 @@ export default function CrmActiveCustomersDashboard() {
 
   const {
     data: activeCustomersRes,
-    isLoading: activeLoading,
+    isLoading: loading,
     isError,
     error: dashError,
     isFetching: refreshing,
     dataUpdatedAt,
   } = useActiveCustomers();
-
-  const { data: subsData, isLoading: subsLoading } = useSubscriptions();
-
-  const loading = activeLoading && subsLoading;
 
   const { data: pipelineData } = usePipelineData();
   const refreshMutation = useRefreshDashboard();
@@ -155,29 +244,8 @@ export default function CrmActiveCustomersDashboard() {
     if (activeCustomersRes?.rows && Array.isArray(activeCustomersRes.rows) && activeCustomersRes.rows.length > 0) {
       return normalizeCustomSheetRows(activeCustomersRes.rows);
     }
-    if (subsData?.rows && Array.isArray(subsData.rows)) {
-      const agg = aggregateByCustomer(subsData.rows as SubscriptionRow[]);
-      return agg.map((c, idx) => ({
-        id: `PS${String(idx + 1).padStart(5, "0")}`,
-        email: c.email,
-        name: c.name,
-        phoneNumber: String(c.phoneNumber || ""),
-        location: c.city || "lb nagar",
-        city: c.city || "lb nagar",
-        currentStatus: c.currentStatus || "Active",
-        subscriptionCount: c.subscriptionCount,
-        totalSpent: c.totalSpent,
-        latestPlan: c.latestPlan,
-        mealType: "veg",
-        meal: "bf",
-        goal: "health",
-        customizations: "standard",
-        inspection: "done",
-        latestPaidAt: c.latestPaidAt,
-      }));
-    }
-    return [];
-  }, [activeCustomersRes, subsData]);
+    return normalizeCustomSheetRows(SAMPLE_SHEET_ROWS);
+  }, [activeCustomersRes]);
 
   const filtered = useMemo(() => {
     const matching = customers.filter((c) => {

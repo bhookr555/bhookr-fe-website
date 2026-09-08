@@ -122,9 +122,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const url =
-    process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL ||
-    process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
+  const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
 
   if (url) {
     try {
