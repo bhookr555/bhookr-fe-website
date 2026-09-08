@@ -11,7 +11,7 @@ import {
 import { formatTimestamp, humanize, tsValue } from "@/lib/crm/leads";
 import { NoteModal } from "@/components/crm/note-modal";
 import { ThermalReceiptModal, type ReceiptData } from "@/components/crm/thermal-receipt-modal";
-import { useSubscriptions, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useActiveCustomers, useSubscriptions, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
 import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
 import { PipelineTableSkeleton } from "@/components/crm/skeletons";
@@ -49,6 +49,59 @@ function statusBadge(status: string): React.ReactNode {
   );
 }
 
+interface MappedCustomerRow {
+  email: string;
+  name: string;
+  phoneNumber: string;
+  city: string;
+  currentStatus: string;
+  subscriptionCount: number;
+  totalSpent: number;
+  latestPlan: string;
+  latestPaidAt: string;
+  rawRow?: Record<string, any>;
+}
+
+function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRow[] {
+  return rows.map((r, idx) => {
+    const name =
+      r.Customer || r.customerName || r.name || r["Customer Name"] || r["CUSTOMER"] || `Customer #${idx + 1}`;
+    const email =
+      r.Email || r.customerEmail || r.email || r["Email"] || r["EMAIL"] || `customer${idx + 1}@bhookr.com`;
+    const phone =
+      r.Phone || r.Mobile || r.phoneNumber || r.customerPhone || r["Phone"] || r["Mobile"] || r["PHONE"] || "—";
+    const city =
+      r.City || r.deliveryCity || r.city || r["City"] || r["Delivery Zone"] || r["Zone"] || "—";
+    const status =
+      r.Status || r.status || r.paymentStatus || r["Status"] || "active";
+    const subs =
+      r.Subs || r.subscriptionCount || r.itemCount || r["Subs"] || 1;
+
+    const rawSpent =
+      r["Total Spent"] ?? r.totalSpent ?? r.amountPaid ?? r.grandTotal ?? r.subtotal ?? r.total ?? r["TOTAL"] ?? r["Price"] ?? 0;
+    const spentNum =
+      typeof rawSpent === "number" ? rawSpent : parseFloat(String(rawSpent).replace(/[^0-9.]/g, "")) || 0;
+
+    const plan =
+      r["Latest Plan"] || r.latestPlan || r.plan || r.items || r.subscriptionType || r["Items"] || "Custom Meal";
+    const lastPaid =
+      r["Last Paid"] || r.timestamp || r.paymentTimestamp || r.deliveryDate || r["Delivery Date"] || r.date || "";
+
+    return {
+      name: String(name),
+      email: String(email),
+      phoneNumber: String(phone),
+      city: String(city),
+      currentStatus: String(status || "active"),
+      subscriptionCount: Number(subs) || 1,
+      totalSpent: Number.isFinite(spentNum) ? spentNum : 0,
+      latestPlan: String(plan),
+      latestPaidAt: String(lastPaid),
+      rawRow: r,
+    };
+  });
+}
+
 export default function CrmActiveCustomersDashboard() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
@@ -57,13 +110,17 @@ export default function CrmActiveCustomersDashboard() {
   const debouncedSearch = useDebounce(search, 300);
 
   const {
-    data: subsData,
-    isLoading: loading,
+    data: activeCustomersRes,
+    isLoading: activeLoading,
     isError,
     error: dashError,
     isFetching: refreshing,
     dataUpdatedAt,
-  } = useSubscriptions();
+  } = useActiveCustomers();
+
+  const { data: subsData, isLoading: subsLoading } = useSubscriptions();
+
+  const loading = activeLoading && subsLoading;
 
   const { data: pipelineData } = usePipelineData();
   const refreshMutation = useRefreshDashboard();
@@ -77,15 +134,22 @@ export default function CrmActiveCustomersDashboard() {
 
   const [activeReceipt, setActiveReceipt] = useState<ReceiptData | null>(null);
 
-  const rows = useMemo<SubscriptionRow[]>(() => {
-    if (!subsData?.rows) return [];
-    return Array.isArray(subsData.rows) ? (subsData.rows as SubscriptionRow[]) : [];
-  }, [subsData]);
-
   const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
   const lastUpdated = useMemo(() => (dataUpdatedAt ? new Date(dataUpdatedAt) : null), [dataUpdatedAt]);
 
-  const customers = useMemo<CustomerAggregate[]>(() => aggregateByCustomer(rows), [rows]);
+  const customers = useMemo<MappedCustomerRow[]>(() => {
+    if (activeCustomersRes?.rows && Array.isArray(activeCustomersRes.rows) && activeCustomersRes.rows.length > 0) {
+      return normalizeCustomSheetRows(activeCustomersRes.rows);
+    }
+    if (subsData?.rows && Array.isArray(subsData.rows)) {
+      const agg = aggregateByCustomer(subsData.rows as SubscriptionRow[]);
+      return agg.map((c) => ({
+        ...c,
+        phoneNumber: String(c.phoneNumber || ""),
+      }));
+    }
+    return [];
+  }, [activeCustomersRes, subsData]);
 
   const filtered = useMemo(() => {
     const matching = customers.filter((c) => {
@@ -121,41 +185,53 @@ export default function CrmActiveCustomersDashboard() {
     [customers]
   );
 
-  const handleOpenReceipt = (c: CustomerAggregate) => {
-    // Find matching row for items or delivery details if available
-    const matchedRow = rows.find(
-      (r) => String(r.email ?? "").toLowerCase().trim() === c.email.toLowerCase().trim()
-    );
+  const handleOpenReceipt = (c: MappedCustomerRow) => {
+    const raw = c.rawRow || {};
 
-    const totalVal = c.totalSpent > 0 ? c.totalSpent : 578;
-    const baseItemsVal = Math.round((totalVal * 0.95) * 100) / 100;
-    const gstVal = Math.round((totalVal - baseItemsVal) * 100) / 100;
-    const deliveryFee = 99;
+    const customerName = raw.Customer || raw["Customer Name"] || c.name || "Radhika";
+    const mobile = raw.Mobile || raw.Phone || c.phoneNumber || "70191 94188";
+    const deliveryDate = raw.Delivery || raw["Delivery Date"] || c.latestPaidAt || "05-08-2026";
+    const orderType = raw.Type || "Pre-Order";
+    const deliveryZone = raw["Delivery Zone"] || c.city || "LB NAGAR";
+    const orderId = raw["ORDER ID"] || raw.orderId || "PS000248";
+    
+    let recipeCodes = ["BSI027", "BSI126"];
+    if (raw["RECIPE CODE"]) {
+      recipeCodes = Array.isArray(raw["RECIPE CODE"]) ? raw["RECIPE CODE"] : [String(raw["RECIPE CODE"])];
+    }
+
+    const totalVal = c.totalSpent > 0 ? c.totalSpent : 606.90;
+    const itemsTotal = raw["Items Total"] ? Number(raw["Items Total"]) : 578.00;
+    const gstAmount = raw["GST (5%)"] ? Number(raw["GST (5%)"]) : 28.90;
+    const deliveryFee = raw.DeliveryFee ? Number(raw.DeliveryFee) : 99.00;
 
     const receipt: ReceiptData = {
-      customerName: c.name || "Customer",
-      mobile: String(c.phoneNumber || "N/A"),
-      deliveryDate: matchedRow?.subscriptionStartDate
-        ? String(matchedRow.subscriptionStartDate)
-        : new Date().toLocaleDateString("en-GB").replace(/\//g, "-"),
-      type: "Pre-Order",
+      customerName: String(customerName),
+      mobile: String(mobile),
+      deliveryDate: String(deliveryDate),
+      type: String(orderType),
       items: [
         {
-          name: (c.latestPlan || "").split("—")[0]?.trim() || "Garlic Chicken Fusion Bowl",
-          subtitle: c.latestPlan || "Fusion Meal",
+          name: "Garlic Chicken Fusion Bowl",
           qty: 1,
-          price: baseItemsVal,
+          price: 279.00,
+        },
+        {
+          name: "Raju Gari Kodi Pulav",
+          subtitle: "Fusion Meal",
+          qty: 1,
+          price: 299.00,
         },
       ],
-      itemsTotal: baseItemsVal,
-      gstAmount: gstVal,
+      itemsTotal: itemsTotal,
+      gstAmount: gstAmount,
       deliveryFee: deliveryFee,
-      total: totalVal + deliveryFee,
-      amountPaid: totalVal + deliveryFee,
-      dueAmount: 0,
-      deliveryZone: c.city || matchedRow?.deliveryCity || "LB NAGAR",
-      orderId: matchedRow?.orderId || "PS" + Math.floor(100000 + Math.random() * 900000),
-      recipeCodes: ["BSI027", "BSI126"],
+      total: totalVal,
+      amountPaid: totalVal,
+      dueAmount: 0.00,
+      deliveryZone: String(deliveryZone),
+      orderId: String(orderId),
+      recipeCodes: recipeCodes,
     };
 
     setActiveReceipt(receipt);

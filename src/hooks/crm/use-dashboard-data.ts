@@ -238,6 +238,21 @@ export function useOrders() {
   });
 }
 
+export function useActiveCustomers() {
+  return useQuery<{ success: boolean; rows: Record<string, any>[]; total: number }, Error>({
+    queryKey: ["crm", "active-customers-sheet"],
+    queryFn: async () => {
+      const res = await fetch("/api/crm/customers", { credentials: "include" });
+      if (!res.ok) {
+        throw new Error(`Failed to fetch active customers sheet: ${res.status}`);
+      }
+      return res.json();
+    },
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 // ── Manual Refresh Mutation ───────────────────────────────────────────────────
 
 /**
