@@ -4,30 +4,44 @@ import {
   getCachedData,
   setCachedData,
   isCacheFresh,
-  GAS_CACHE_TTL_MS,
 } from "@/lib/crm/cache";
 
 export const dynamic = "force-dynamic";
 
+// Short cache TTL (3 seconds) for super fast sync from Google Sheets
+const ACTIVE_CUSTOMERS_CACHE_TTL_MS = 3 * 1000;
+
 // Exact row layout from Google Sheet 1QGOfVihcDcaEhVJMn960zM0u0cenSyw_DHPYy6hE38E ("Sample print sheet")
-const SAMPLE_PRINT_SHEET_ROWS = [
+export const SAMPLE_PRINT_SHEET_ROWS = [
   {
-    Id: "PS00001",
-    name: "Shiva",
-    "phone number": "8186939526",
-    location: "idly street",
-    zone: "lb nagar",
-    Status: "Priority / Active",
-    Plan: "elite",
-    Type: "veg",
-    Meal: "bf",
-    goal: "weight loss",
-    Customizations: "yes",
-    Inspection: "done",
-    "Items Total": "578.00",
-    "GST (5%)": "28.90",
-    DeliveryFee: "99.00",
-    TOTAL: "606.90",
+    "DELIVERY CODE": "BDC0001",
+    NAME: "Shiva",
+    MOBILE: "9989445376",
+    LOCATION: "Idly street",
+    ZONE: "ZONE 1",
+    STATUS: "PRIORITY",
+    PLAN: "ELITE",
+    TYPE: "VEG",
+    MEAL: "BF",
+    GOAL: "WEIGHT LOSS",
+    CUSTOMIZATION: "YES",
+    INSPECTION: "DONE",
+    "RECIPE ID": "BSI027",
+  },
+  {
+    "DELIVERY CODE": "BDC0002",
+    NAME: "YASH",
+    MOBILE: "7416992979",
+    LOCATION: "DALLASPURAM",
+    ZONE: "ZONE 2",
+    STATUS: "PRIORITY",
+    PLAN: "LITE",
+    TYPE: "NON VEG",
+    MEAL: "BF",
+    GOAL: "WEIGHT LOSS",
+    CUSTOMIZATION: "YES",
+    INSPECTION: "DONE",
+    "RECIPE ID": "BSI028",
   },
 ];
 
@@ -43,24 +57,25 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const forceRefresh = searchParams.get("refresh") === "true";
 
-  // Check cache
-  const cached = await getCachedData("active_customers");
-  if (!forceRefresh && isCacheFresh(cached?.cachedAt, GAS_CACHE_TTL_MS)) {
-    return NextResponse.json(cached!.data, {
-      headers: { "X-Cache": "HIT", "Cache-Control": "private, max-age=0" },
-    });
+  // Check cache unless force refresh requested
+  if (!forceRefresh) {
+    const cached = await getCachedData("active_customers");
+    if (isCacheFresh(cached?.cachedAt, ACTIVE_CUSTOMERS_CACHE_TTL_MS)) {
+      return NextResponse.json(cached!.data, {
+        headers: { "X-Cache": "HIT", "Cache-Control": "no-cache, no-store, must-revalidate" },
+      });
+    }
   }
 
   const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
-  const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
 
-  // Only fetch from upstream if URL is configured AND is not the old subscriptions sheet URL
-  if (url && url !== subsUrl) {
+  // Only fetch from upstream if URL is configured
+  if (url) {
     try {
-      const upstream = await fetch(`${url}?action=list`, {
+      const upstream = await fetch(`${url}?action=list&t=${Date.now()}`, {
         method: "GET",
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(10_000),
         redirect: "follow",
       });
 
@@ -71,7 +86,7 @@ export async function GET(req: NextRequest) {
             console.warn("[active_customers] Cache write failed:", e)
           );
           return NextResponse.json(data, {
-            headers: { "X-Cache": "MISS", "Cache-Control": "private, max-age=0" },
+            headers: { "X-Cache": "MISS", "Cache-Control": "no-cache, no-store, must-revalidate" },
           });
         }
       }
@@ -80,7 +95,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Strictly serve sample print sheet data matching 1QGOfVihcDcaEhVJMn960zM0u0cenSyw_DHPYy6hE38E
+  // Fallback to sample print sheet matching 1QGOfVihcDcaEhVJMn960zM0u0cenSyw_DHPYy6hE38E
   const sampleData = {
     success: true,
     rows: SAMPLE_PRINT_SHEET_ROWS,
@@ -93,7 +108,8 @@ export async function GET(req: NextRequest) {
   );
 
   return NextResponse.json(sampleData, {
-    headers: { "X-Cache": "SAMPLE_PRINT_SHEET", "Cache-Control": "private, max-age=0" },
+    headers: { "X-Cache": "SAMPLE_PRINT_SHEET", "Cache-Control": "no-cache, no-store, must-revalidate" },
   });
 }
+
 

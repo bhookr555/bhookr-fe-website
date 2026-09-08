@@ -1,17 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, RefreshCw, Users, ShieldCheck, IndianRupee, StickyNote, Printer } from "lucide-react";
-import {
-  aggregateByCustomer,
-  formatINR,
-  type CustomerAggregate,
-  type SubscriptionRow,
-} from "@/lib/crm/subscriptions";
-import { formatTimestamp, humanize, tsValue } from "@/lib/crm/leads";
+import { AlertCircle, RefreshCw, ShieldCheck, Users, IndianRupee, StickyNote, Printer } from "lucide-react";
+import { formatINR } from "@/lib/crm/subscriptions";
+import { humanize, tsValue } from "@/lib/crm/leads";
 import { NoteModal } from "@/components/crm/note-modal";
 import { ThermalReceiptModal, type ReceiptData } from "@/components/crm/thermal-receipt-modal";
-import { useActiveCustomers, useSubscriptions, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
+import { useActiveCustomers, usePipelineData } from "@/hooks/crm/use-dashboard-data";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
 import { PipelineTableSkeleton } from "@/components/crm/skeletons";
@@ -27,8 +23,9 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 const STATUS_OPTIONS = [
-  { value: "active", label: "Active Subscribers" },
-  { value: "all", label: "All Customers" },
+  { value: "all", label: "All Statuses" },
+  { value: "priority", label: "Priority" },
+  { value: "active", label: "Active" },
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
 ];
@@ -36,15 +33,16 @@ const STATUS_OPTIONS = [
 function statusBadge(status: string): React.ReactNode {
   const s = String(status || "").toLowerCase();
   const styles: Record<string, string> = {
+    priority: "bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-300 font-bold",
     active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
     expired: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
     cancelled: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
   };
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${styles[s] ?? styles.expired}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase ${styles[s] ?? styles.active}`}
     >
-      {humanize(s) || "—"}
+      {humanize(s) || "ACTIVE"}
     </span>
   );
 }
@@ -65,34 +63,49 @@ interface MappedCustomerRow {
   goal: string;
   customizations: string;
   inspection: string;
+  recipeId: string;
   latestPaidAt: string;
   rawRow?: Record<string, any>;
 }
 
+function getVal(r: Record<string, any>, ...keys: string[]): string {
+  if (!r || typeof r !== "object") return "";
+  for (const k of keys) {
+    if (r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== "") {
+      return String(r[k]).trim();
+    }
+  }
+  const rKeys = Object.keys(r);
+  for (const targetKey of keys) {
+    const targetNorm = targetKey.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const rk of rKeys) {
+      if (rk.toLowerCase().replace(/[^a-z0-9]/g, "") === targetNorm) {
+        if (r[rk] !== undefined && r[rk] !== null && String(r[rk]).trim() !== "") {
+          return String(r[rk]).trim();
+        }
+      }
+    }
+  }
+  return "";
+}
+
 function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRow[] {
   return rows.map((r, idx) => {
-    const id = r.Id || r.id || r["Id"] || r["ID"] || `PS${String(idx + 1).padStart(5, "0")}`;
-    const name =
-      r.name || r.Customer || r.customerName || r["Customer Name"] || r["CUSTOMER"] || r["name"] || `Customer #${idx + 1}`;
-    const phone =
-      r["phone number"] || r.Phone || r.Mobile || r.phoneNumber || r.customerPhone || r["Phone"] || r["Mobile"] || "—";
-    const location = r.location || r.Address || r.address || r["location"] || "—";
-    const zone = r.zone || r.City || r.deliveryCity || r.city || r["zone"] || r["Zone"] || "lb nagar";
-    const status = r.Status || r.status || r.paymentStatus || r["Status"] || "Active";
-    const plan = r.Plan || r.plan || r.latestPlan || r.subscriptionType || r["Plan"] || "elite";
-    const type = r.Type || r.type || r["Type"] || "veg";
-    const meal = r.Meal || r.meal || r["Meal"] || "bf";
-    const goal = r.goal || r.Goal || r["goal"] || "fitness";
-    const customizations = r.Customizations || r.customizations || r["Customizations"] || "none";
-    const inspection = r.Inspection || r.inspection || r["Inspection"] || "done";
-    
-    const email =
-      r.Email || r.customerEmail || r.email || r["Email"] || `${String(name).toLowerCase().replace(/\s+/g, "")}@bhookr.com`;
+    const id = getVal(r, "DELIVERY CODE", "Delivery Code", "DELIVERY_CODE", "Id", "id") || `BDC${String(idx + 1).padStart(4, "0")}`;
+    const name = getVal(r, "NAME", "Name", "Customer Name", "Customer", "name") || `Customer #${idx + 1}`;
+    const phone = getVal(r, "MOBILE", "Mobile", "Phone", "Phone Number", "phone number", "phone") || "—";
+    const location = getVal(r, "LOCATION", "Location", "Address", "location") || "—";
+    const zone = getVal(r, "ZONE", "Zone", "City", "zone") || "—";
+    const status = getVal(r, "STATUS", "Status", "status") || "PRIORITY";
+    const plan = getVal(r, "PLAN", "Plan", "plan") || "ELITE";
+    const type = getVal(r, "TYPE", "Type", "type") || "VEG";
+    const meal = getVal(r, "MEAL", "Meal", "meal") || "BF";
+    const goal = getVal(r, "GOAL", "Goal", "goal") || "WEIGHT LOSS";
+    const customizations = getVal(r, "CUSTOMIZATION", "Customization", "CUSTOMIZATIONS", "Customizations", "customizations") || "YES";
+    const inspection = getVal(r, "INSPECTION", "Inspection", "inspection") || "DONE";
+    const recipeId = getVal(r, "RECIPE ID", "Recipe ID", "RECIPE_ID", "RecipeId", "recipeId") || "—";
 
-    const rawSpent =
-      r["TOTAL"] ?? r["Total Spent"] ?? r.totalSpent ?? r.amountPaid ?? r.grandTotal ?? r.subtotal ?? r.total ?? 606.90;
-    const spentNum =
-      typeof rawSpent === "number" ? rawSpent : parseFloat(String(rawSpent).replace(/[^0-9.]/g, "")) || 606.90;
+    const email = `${String(name).toLowerCase().replace(/\s+/g, "")}@bhookr.com`;
 
     return {
       id: String(id),
@@ -101,15 +114,16 @@ function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRo
       phoneNumber: String(phone),
       location: String(location),
       city: String(zone),
-      currentStatus: String(status || "Active"),
+      currentStatus: String(status),
       subscriptionCount: 1,
-      totalSpent: Number.isFinite(spentNum) ? spentNum : 606.90,
+      totalSpent: 606.90,
       latestPlan: String(plan),
       mealType: String(type),
       meal: String(meal),
       goal: String(goal),
       customizations: String(customizations),
       inspection: String(inspection),
+      recipeId: String(recipeId),
       latestPaidAt: new Date().toLocaleDateString("en-GB").replace(/\//g, "-"),
       rawRow: r,
     };
@@ -118,22 +132,34 @@ function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRo
 
 const SAMPLE_SHEET_ROWS = [
   {
-    Id: "PS00001",
-    name: "Shiva",
-    "phone number": "8186939526",
-    location: "idly street",
-    zone: "lb nagar",
-    Status: "Priority / Active",
-    Plan: "elite",
-    Type: "veg",
-    Meal: "bf",
-    goal: "weight loss",
-    Customizations: "yes",
-    Inspection: "done",
-    "Items Total": "578.00",
-    "GST (5%)": "28.90",
-    DeliveryFee: "99.00",
-    TOTAL: "606.90",
+    "DELIVERY CODE": "BDC0001",
+    NAME: "Shiva",
+    MOBILE: "9989445376",
+    LOCATION: "Idly street",
+    ZONE: "ZONE 1",
+    STATUS: "PRIORITY",
+    PLAN: "ELITE",
+    TYPE: "VEG",
+    MEAL: "BF",
+    GOAL: "WEIGHT LOSS",
+    CUSTOMIZATION: "YES",
+    INSPECTION: "DONE",
+    "RECIPE ID": "BSI027",
+  },
+  {
+    "DELIVERY CODE": "BDC0002",
+    NAME: "YASH",
+    MOBILE: "7416992979",
+    LOCATION: "DALLASPURAM",
+    ZONE: "ZONE 2",
+    STATUS: "PRIORITY",
+    PLAN: "LITE",
+    TYPE: "NON VEG",
+    MEAL: "BF",
+    GOAL: "WEIGHT LOSS",
+    CUSTOMIZATION: "YES",
+    INSPECTION: "DONE",
+    "RECIPE ID": "BSI028",
   },
 ];
 
@@ -141,20 +167,20 @@ export default function CrmActiveCustomersDashboard() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("recent");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
+  const queryClient = useQueryClient();
 
   const {
     data: activeCustomersRes,
     isLoading: loading,
     isError,
     error: dashError,
-    isFetching: refreshing,
     dataUpdatedAt,
   } = useActiveCustomers();
 
   const { data: pipelineData } = usePipelineData();
-  const refreshMutation = useRefreshDashboard();
 
   const [noteModalLead, setNoteModalLead] = useState<{
     email: string;
@@ -167,6 +193,19 @@ export default function CrmActiveCustomersDashboard() {
 
   const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
   const lastUpdated = useMemo(() => (dataUpdatedAt ? new Date(dataUpdatedAt) : null), [dataUpdatedAt]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetch(`/api/crm/customers?refresh=true&t=${Date.now()}`, { credentials: "include" });
+      await queryClient.invalidateQueries({ queryKey: ["crm", "active-customers-sheet"] });
+      toast.success("Live synced with Google Sheet");
+    } catch {
+      toast.error("Failed to refresh live sheet");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const customers = useMemo<MappedCustomerRow[]>(() => {
     if (activeCustomersRes?.rows && Array.isArray(activeCustomersRes.rows) && activeCustomersRes.rows.length > 0) {
@@ -181,7 +220,7 @@ export default function CrmActiveCustomersDashboard() {
         return false;
       }
       if (debouncedSearch.trim()) {
-        const haystack = [c.id, c.name, c.phoneNumber, c.location, c.city, c.latestPlan, c.mealType, c.meal, c.goal]
+        const haystack = [c.id, c.name, c.phoneNumber, c.location, c.city, c.latestPlan, c.mealType, c.meal, c.goal, c.recipeId]
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
@@ -205,19 +244,20 @@ export default function CrmActiveCustomersDashboard() {
   );
 
   const handleOpenReceipt = (c: MappedCustomerRow) => {
-    const raw = c.rawRow || {};
-
     const customerName = c.name || "Shiva";
-    const mobile = c.phoneNumber || "8186939526";
+    const mobile = c.phoneNumber || "9989445376";
     const deliveryDate = new Date().toLocaleDateString("en-GB").replace(/\//g, "-");
     const orderType = `${c.mealType.toUpperCase()} (${c.meal.toUpperCase()})`;
     const deliveryZone = `${c.city.toUpperCase()} (${c.location})`;
-    const orderId = c.id || "PS00001";
-    
-    const itemsTotal = raw["Items Total"] ? Number(raw["Items Total"]) : 578.00;
-    const gstAmount = raw["GST (5%)"] ? Number(raw["GST (5%)"]) : 28.90;
-    const deliveryFee = raw.DeliveryFee ? Number(raw.DeliveryFee) : 99.00;
-    const totalVal = c.totalSpent > 0 ? c.totalSpent : 606.90;
+    const orderId = c.id || "BDC0001";
+
+    const recipeCodes = [
+      `CUSTOM: ${c.customizations}`,
+      `INSPEC: ${c.inspection}`,
+    ];
+    if (c.recipeId && c.recipeId !== "—") {
+      recipeCodes.push(`RECIPE ID: ${c.recipeId}`);
+    }
 
     const receipt: ReceiptData = {
       customerName: String(customerName),
@@ -229,18 +269,11 @@ export default function CrmActiveCustomersDashboard() {
           name: `${c.latestPlan.toUpperCase()} — ${c.meal.toUpperCase()}`,
           subtitle: `Goal: ${c.goal} | Type: ${c.mealType}`,
           qty: 1,
-          price: itemsTotal,
         },
       ],
-      itemsTotal: itemsTotal,
-      gstAmount: gstAmount,
-      deliveryFee: deliveryFee,
-      total: totalVal,
-      amountPaid: totalVal,
-      dueAmount: 0.00,
       deliveryZone: String(deliveryZone),
       orderId: String(orderId),
-      recipeCodes: [`CUSTOM: ${c.customizations}`, `INSPEC: ${c.inspection}`],
+      recipeCodes: recipeCodes,
     };
 
     setActiveReceipt(receipt);
@@ -259,23 +292,18 @@ export default function CrmActiveCustomersDashboard() {
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Tracking active meal subscribers & print sheet orders · updated{" "}
-              {lastUpdated?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+              Live synced with Google Sheet · auto-updates every 5s · last synced{" "}
+              {lastUpdated?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </p>
           )}
         </div>
         <button
-          onClick={() =>
-            refreshMutation.mutate(undefined, {
-              onSuccess: () => toast.success("Customers refreshed"),
-              onError: () => toast.error("Refresh failed — using cached data"),
-            })
-          }
-          disabled={refreshing}
+          onClick={handleManualRefresh}
+          disabled={isRefreshing}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+          Sync Live Sheet
         </button>
       </div>
 
@@ -336,7 +364,7 @@ export default function CrmActiveCustomersDashboard() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search ID, name, phone, location, plan, goal…"
+          placeholder="Search Code, name, mobile, location, plan, goal…"
           className="flex-1 min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-900 dark:text-white sm:max-w-sm"
         />
         <select
@@ -361,25 +389,28 @@ export default function CrmActiveCustomersDashboard() {
           <table className="min-w-full border-collapse text-sm">
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-950">
               <tr>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "100px" }}>ID</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "140px" }}>Name</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "130px" }}>Phone</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "130px" }}>Location</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "110px" }}>Zone</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Status</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Plan</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "80px" }}>Type</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "80px" }}>Meal</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "120px" }}>Goal</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "110px" }}>Print Bill</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Notes</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "120px" }}>DELIVERY CODE</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "120px" }}>NAME</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "130px" }}>MOBILE</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "130px" }}>LOCATION</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "100px" }}>ZONE</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "100px" }}>STATUS</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "90px" }}>PLAN</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "90px" }}>TYPE</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "80px" }}>MEAL</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "130px" }}>GOAL</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "120px" }}>CUSTOMIZATION</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "110px" }}>INSPECTION</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "110px" }}>RECIPE ID</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "100px" }}>PRINT BILL</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:border-gray-800 dark:text-gray-300" style={{ minWidth: "90px" }}>NOTES</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={12} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
+                <tr><td colSpan={15} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={12} className="px-3 py-12 text-center text-sm text-gray-500">
+                <tr><td colSpan={15} className="px-3 py-12 text-center text-sm text-gray-500">
                   {customers.length === 0 ? "No active sheet orders found." : "No entries match your filters."}
                 </td></tr>
               ) : (
@@ -388,16 +419,19 @@ export default function CrmActiveCustomersDashboard() {
                   const note = pipeline[emailKey]?.notes;
                   return (
                     <tr key={c.id + idx} className="odd:bg-white even:bg-gray-50 hover:bg-red-50/40 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-red-950/20">
-                      <td className="border-b border-gray-100 px-3 py-2 font-mono text-xs font-semibold text-[#E31E24] dark:border-gray-800">{c.id}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white">{c.name}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.phoneNumber}</td>
+                      <td className="border-b border-gray-100 px-3 py-2 font-mono text-xs font-bold text-[#E31E24] dark:border-gray-800">{c.id}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-bold text-gray-900 dark:border-gray-800 dark:text-white">{c.name}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 font-mono text-xs">{c.phoneNumber}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.location}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.city}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-semibold text-gray-800 dark:border-gray-800 dark:text-gray-200">{c.city}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 dark:border-gray-800">{statusBadge(c.currentStatus)}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white capitalize">{c.latestPlan}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 capitalize">{c.mealType}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 uppercase">{c.meal}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 capitalize">{c.goal}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-bold text-gray-900 dark:border-gray-800 dark:text-white uppercase">{c.latestPlan}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 uppercase font-semibold">{c.mealType}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 uppercase font-bold">{c.meal}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 uppercase">{c.goal}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-center text-gray-700 dark:border-gray-800 dark:text-gray-200 font-bold uppercase">{c.customizations}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-center text-gray-700 dark:border-gray-800 dark:text-gray-200 font-bold uppercase">{c.inspection}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 font-mono text-xs font-semibold">{c.recipeId}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-center dark:border-gray-800">
                         <button
                           type="button"
@@ -460,4 +494,5 @@ export default function CrmActiveCustomersDashboard() {
     </div>
   );
 }
+
 

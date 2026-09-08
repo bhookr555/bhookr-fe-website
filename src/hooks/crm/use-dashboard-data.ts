@@ -242,13 +242,15 @@ export function useActiveCustomers() {
   return useQuery<{ success: boolean; rows: Record<string, any>[]; total: number }, Error>({
     queryKey: ["crm", "active-customers-sheet"],
     queryFn: async () => {
-      const res = await fetch("/api/crm/customers", { credentials: "include" });
+      const res = await fetch(`/api/crm/customers?t=${Date.now()}`, { credentials: "include" });
       if (!res.ok) {
         throw new Error(`Failed to fetch active customers sheet: ${res.status}`);
       }
       return res.json();
     },
-    staleTime: 60 * 1000,
+    staleTime: 0,
+    refetchInterval: 5 * 1000, // Instant sync: auto-refetch every 5 seconds
+    refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
   });
 }
