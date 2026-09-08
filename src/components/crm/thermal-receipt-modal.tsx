@@ -6,7 +6,7 @@ export interface ReceiptItem {
   name: string;
   subtitle?: string;
   qty: number;
-  price: number;
+  price?: number;
 }
 
 export interface ReceiptData {
@@ -15,12 +15,12 @@ export interface ReceiptData {
   deliveryDate: string;
   type?: string; // Pre-Order / Instant
   items: ReceiptItem[];
-  itemsTotal: number;
-  gstAmount: number;
-  deliveryFee: number;
-  total: number;
-  amountPaid: number;
-  dueAmount: number;
+  itemsTotal?: number;
+  gstAmount?: number;
+  deliveryFee?: number;
+  total?: number;
+  amountPaid?: number;
+  dueAmount?: number;
   deliveryZone?: string;
   orderId: string;
   recipeCodes?: string[];
@@ -46,7 +46,7 @@ export function ThermalReceiptModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md print:p-0 print:bg-transparent">
       {/* Modal Card - hidden during print */}
-      <div className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl dark:bg-gray-900 print:hidden">
+      <div className="flex max-h-[95vh] w-full max-w-xl flex-col rounded-2xl bg-white shadow-2xl dark:bg-gray-900 print:hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-800">
           <div>
@@ -54,7 +54,7 @@ export function ThermalReceiptModal({
               Thermal Receipt Preview
             </h2>
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              High Contrast POS Print Format (80mm width)
+              Kitchen POS Label Format (100mm × 150mm)
             </p>
           </div>
           <button
@@ -66,8 +66,8 @@ export function ThermalReceiptModal({
         </div>
 
         {/* Receipt Container Preview */}
-        <div className="flex-1 overflow-y-auto bg-gray-200 p-6 dark:bg-gray-950 flex justify-center">
-          <div className="w-[360px] bg-white p-6 shadow-xl border border-gray-300 text-black font-mono text-xs rounded-sm">
+        <div className="flex-1 overflow-y-auto bg-gray-200 p-6 dark:bg-gray-950 flex justify-center items-center">
+          <div className="w-[100mm] min-h-[150mm] bg-white p-6 shadow-xl border border-gray-300 text-black font-mono text-xs rounded-sm box-sizing border-box">
             <ReceiptContent receipt={receipt} />
           </div>
         </div>
@@ -91,7 +91,7 @@ export function ThermalReceiptModal({
       </div>
 
       {/* Actual Print Only Container (Visible strictly when printing) */}
-      <div id="thermal-receipt-print" className="hidden print:block font-mono text-[11px] leading-snug text-black bg-white p-2 w-[76mm] mx-auto">
+      <div id="thermal-receipt-print" className="hidden print:block font-mono text-xs leading-snug text-black bg-white p-4 w-[100mm] h-[150mm] mx-auto box-border">
         <ReceiptContent receipt={receipt} />
       </div>
 
@@ -108,13 +108,15 @@ export function ThermalReceiptModal({
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
-            padding: 4mm !important;
+            width: 100mm !important;
+            height: 150mm !important;
+            padding: 6mm !important;
             background: #ffffff !important;
             color: #000000 !important;
+            box-sizing: border-box !important;
           }
           @page {
-            size: 80mm auto;
+            size: 100mm 150mm;
             margin: 0;
           }
         }
@@ -125,11 +127,11 @@ export function ThermalReceiptModal({
 
 function ReceiptContent({ receipt }: { receipt: ReceiptData }) {
   return (
-    <div className="w-full space-y-2.5 text-black font-mono leading-tight">
+    <div className="w-full space-y-3 text-black font-mono leading-tight">
       {/* Brand Header */}
       <div className="text-center space-y-0.5">
         <p className="text-xs font-normal italic tracking-wide text-gray-900">Hungry to be fit</p>
-        <p className="text-sm font-extrabold uppercase tracking-tight leading-tight">
+        <p className="text-base font-extrabold uppercase tracking-tight leading-tight">
           BHOOKR CLOUD KITCHEN PRIVATE LIMITED
         </p>
       </div>
@@ -137,47 +139,45 @@ function ReceiptContent({ receipt }: { receipt: ReceiptData }) {
       <div className="border-b-2 border-dashed border-gray-800 my-2" />
 
       {/* Customer Info */}
-      <div className="space-y-1 text-xs font-medium">
+      <div className="space-y-1 text-sm font-medium">
         <div className="flex justify-between">
-          <span className="w-24 font-bold text-gray-900">Customer</span>
-          <span className="font-semibold">: {receipt.customerName || "—"}</span>
+          <span className="w-28 font-bold text-gray-900">Customer</span>
+          <span className="font-bold flex-1 text-right">: {receipt.customerName || "—"}</span>
         </div>
         <div className="flex justify-between">
-          <span className="w-24 font-bold text-gray-900">Mobile</span>
-          <span className="font-semibold">: {receipt.mobile || "—"}</span>
+          <span className="w-28 font-bold text-gray-900">Mobile</span>
+          <span className="font-semibold flex-1 text-right">: {receipt.mobile || "—"}</span>
         </div>
         <div className="flex justify-between">
-          <span className="w-24 font-bold text-gray-900">Delivery</span>
-          <span className="font-semibold">: {receipt.deliveryDate || "—"}</span>
+          <span className="w-28 font-bold text-gray-900">Delivery</span>
+          <span className="font-semibold flex-1 text-right">: {receipt.deliveryDate || "—"}</span>
         </div>
         <div className="flex justify-between">
-          <span className="w-24 font-bold text-gray-900">Type</span>
-          <span className="font-semibold">: {receipt.type || "Pre-Order"}</span>
+          <span className="w-28 font-bold text-gray-900">Type</span>
+          <span className="font-semibold flex-1 text-right">: {receipt.type || "Pre-Order"}</span>
         </div>
       </div>
 
       <div className="border-b-2 border-dashed border-gray-800 my-2" />
 
-      {/* Items Table Header */}
+      {/* Items Table Header (No Pricing) */}
       <div>
-        <div className="flex justify-between font-extrabold text-xs pb-1 border-b-2 border-black">
+        <div className="flex justify-between font-extrabold text-sm pb-1 border-b-2 border-black">
           <span className="flex-1 text-left uppercase">ITEMS</span>
-          <span className="w-12 text-center uppercase">QTY</span>
-          <span className="w-20 text-right uppercase">PRICE</span>
+          <span className="w-16 text-right uppercase">QTY</span>
         </div>
 
         {/* Items Rows */}
-        <div className="py-2 space-y-2">
+        <div className="py-2 space-y-2.5">
           {receipt.items && receipt.items.length > 0 ? (
             receipt.items.map((item, i) => (
-              <div key={i} className="text-xs leading-snug">
+              <div key={i} className="text-sm leading-snug">
                 <div className="flex justify-between items-start font-bold">
-                  <span className="flex-1 pr-1">{item.name}</span>
-                  <span className="w-12 text-center">{item.qty}</span>
-                  <span className="w-20 text-right">₹{item.price.toFixed(2)}</span>
+                  <span className="flex-1 pr-2">{item.name}</span>
+                  <span className="w-16 text-right font-extrabold text-base">{item.qty}</span>
                 </div>
                 {item.subtitle && (
-                  <p className="text-[11px] font-medium text-gray-800 pt-0.5">({item.subtitle})</p>
+                  <p className="text-xs font-medium text-gray-800 pt-0.5">({item.subtitle})</p>
                 )}
               </div>
             ))
@@ -187,43 +187,11 @@ function ReceiptContent({ receipt }: { receipt: ReceiptData }) {
         </div>
       </div>
 
-      <div className="border-b-2 border-dashed border-gray-800 my-1.5" />
-
-      {/* Financial Summary */}
-      <div className="space-y-1 text-xs">
-        <div className="flex justify-between font-medium">
-          <span>Items Total</span>
-          <span className="font-bold">: ₹{receipt.itemsTotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between font-medium">
-          <span>GST (5%)</span>
-          <span className="font-bold">: ₹{receipt.gstAmount.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between font-medium">
-          <span>Delivery</span>
-          <span className="font-bold">: ₹{receipt.deliveryFee.toFixed(2)}</span>
-        </div>
-
-        <div className="flex justify-between text-sm font-extrabold pt-1.5 border-t-2 border-black">
-          <span>TOTAL</span>
-          <span>: ₹{receipt.total.toFixed(2)}</span>
-        </div>
-
-        <div className="flex justify-between font-bold text-xs pt-0.5">
-          <span>AMOUNT PAID</span>
-          <span>: ₹{receipt.amountPaid.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between font-bold text-xs">
-          <span>DUE</span>
-          <span>: ₹{receipt.dueAmount.toFixed(2)}</span>
-        </div>
-      </div>
-
       <div className="border-b-2 border-dashed border-gray-800 my-2" />
 
       {/* Delivery Zone & Website */}
       <div className="text-xs space-y-1">
-        <div className="flex justify-between items-center border-2 border-black rounded px-2 py-1 font-bold">
+        <div className="flex justify-between items-center border-2 border-black rounded px-2 py-1.5 font-bold">
           <span>Delivery Zone : {receipt.deliveryZone || "N/A"}</span>
           <span>www.bhookr.com</span>
         </div>
@@ -254,4 +222,5 @@ function ReceiptContent({ receipt }: { receipt: ReceiptData }) {
     </div>
   );
 }
+
 
