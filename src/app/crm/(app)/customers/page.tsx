@@ -198,7 +198,7 @@ export default function CrmActiveCustomersDashboard() {
     setIsRefreshing(true);
     try {
       await fetch(`/api/crm/customers?refresh=true&t=${Date.now()}`, { credentials: "include" });
-      await queryClient.invalidateQueries({ queryKey: ["crm", "active-customers-sheet"] });
+      await queryClient.invalidateQueries({ queryKey: ["crm", "active-customers-sheet-v9"] });
       toast.success("Live synced with Google Sheet");
     } catch {
       toast.error("Failed to refresh live sheet");

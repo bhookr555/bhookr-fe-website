@@ -240,7 +240,7 @@ export function useOrders() {
 
 export function useActiveCustomers() {
   return useQuery<{ success: boolean; rows: Record<string, any>[]; total: number }, Error>({
-    queryKey: ["crm", "active-customers-sheet"],
+    queryKey: ["crm", "active-customers-sheet-v9"],
     queryFn: async () => {
       const res = await fetch(`/api/crm/customers?t=${Date.now()}`, { credentials: "include" });
       if (!res.ok) {

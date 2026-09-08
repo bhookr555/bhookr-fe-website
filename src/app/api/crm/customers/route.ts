@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   // Check cache unless force refresh requested
   if (!forceRefresh) {
-    const cached = await getCachedData("active_customers");
+    const cached = await getCachedData("active_customers_v9");
     if (isCacheFresh(cached?.cachedAt, ACTIVE_CUSTOMERS_CACHE_TTL_MS)) {
       return NextResponse.json(cached!.data, {
         headers: { "X-Cache": "HIT", "Cache-Control": "no-cache, no-store, must-revalidate" },
@@ -68,9 +68,10 @@ export async function GET(req: NextRequest) {
   }
 
   const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
+  const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
 
-  // Only fetch from upstream if URL is configured
-  if (url) {
+  // Only fetch from upstream if URL is configured AND is NOT pointing to old subscriptions sheet URL
+  if (url && url !== subsUrl) {
     try {
       const upstream = await fetch(`${url}?action=list&t=${Date.now()}`, {
         method: "GET",
@@ -82,12 +83,23 @@ export async function GET(req: NextRequest) {
       if (upstream.ok) {
         const data = await upstream.json();
         if (data && Array.isArray(data.rows) && data.rows.length > 0) {
-          setCachedData("active_customers", data).catch((e) =>
-            console.warn("[active_customers] Cache write failed:", e)
-          );
-          return NextResponse.json(data, {
-            headers: { "X-Cache": "MISS", "Cache-Control": "no-cache, no-store, must-revalidate" },
-          });
+          const firstRow = data.rows[0];
+          // Strictly ensure this response comes from the Sample Print Sheet format
+          const isSamplePrintFormat =
+            firstRow["DELIVERY CODE"] !== undefined ||
+            firstRow["DELIVERY_CODE"] !== undefined ||
+            firstRow["Delivery Code"] !== undefined ||
+            firstRow["RECIPE ID"] !== undefined ||
+            firstRow["RECIPE_ID"] !== undefined;
+
+          if (isSamplePrintFormat) {
+            setCachedData("active_customers_v9", data).catch((e) =>
+              console.warn("[active_customers] Cache write failed:", e)
+            );
+            return NextResponse.json(data, {
+              headers: { "X-Cache": "MISS", "Cache-Control": "no-cache, no-store, must-revalidate" },
+            });
+          }
         }
       }
     } catch (err) {
@@ -103,7 +115,7 @@ export async function GET(req: NextRequest) {
     source: "sample_print_sheet",
   };
 
-  setCachedData("active_customers", sampleData).catch((e) =>
+  setCachedData("active_customers_v9", sampleData).catch((e) =>
     console.warn("[active_customers] Cache sample write failed:", e)
   );
 
@@ -111,5 +123,6 @@ export async function GET(req: NextRequest) {
     headers: { "X-Cache": "SAMPLE_PRINT_SHEET", "Cache-Control": "no-cache, no-store, must-revalidate" },
   });
 }
+
 
 
