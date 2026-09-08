@@ -50,53 +50,67 @@ function statusBadge(status: string): React.ReactNode {
 }
 
 interface MappedCustomerRow {
+  id: string;
   email: string;
   name: string;
   phoneNumber: string;
+  location: string;
   city: string;
   currentStatus: string;
   subscriptionCount: number;
   totalSpent: number;
   latestPlan: string;
+  mealType: string;
+  meal: string;
+  goal: string;
+  customizations: string;
+  inspection: string;
   latestPaidAt: string;
   rawRow?: Record<string, any>;
 }
 
 function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRow[] {
   return rows.map((r, idx) => {
+    const id = r.Id || r.id || r["Id"] || r["ID"] || `PS${String(idx + 1).padStart(5, "0")}`;
     const name =
-      r.Customer || r.customerName || r.name || r["Customer Name"] || r["CUSTOMER"] || `Customer #${idx + 1}`;
-    const email =
-      r.Email || r.customerEmail || r.email || r["Email"] || r["EMAIL"] || `customer${idx + 1}@bhookr.com`;
+      r.name || r.Customer || r.customerName || r["Customer Name"] || r["CUSTOMER"] || r["name"] || `Customer #${idx + 1}`;
     const phone =
-      r.Phone || r.Mobile || r.phoneNumber || r.customerPhone || r["Phone"] || r["Mobile"] || r["PHONE"] || "—";
-    const city =
-      r.City || r.deliveryCity || r.city || r["City"] || r["Delivery Zone"] || r["Zone"] || "—";
-    const status =
-      r.Status || r.status || r.paymentStatus || r["Status"] || "active";
-    const subs =
-      r.Subs || r.subscriptionCount || r.itemCount || r["Subs"] || 1;
+      r["phone number"] || r.Phone || r.Mobile || r.phoneNumber || r.customerPhone || r["Phone"] || r["Mobile"] || "—";
+    const location = r.location || r.Address || r.address || r["location"] || "—";
+    const zone = r.zone || r.City || r.deliveryCity || r.city || r["zone"] || r["Zone"] || "lb nagar";
+    const status = r.Status || r.status || r.paymentStatus || r["Status"] || "Active";
+    const plan = r.Plan || r.plan || r.latestPlan || r.subscriptionType || r["Plan"] || "elite";
+    const type = r.Type || r.type || r["Type"] || "veg";
+    const meal = r.Meal || r.meal || r["Meal"] || "bf";
+    const goal = r.goal || r.Goal || r["goal"] || "fitness";
+    const customizations = r.Customizations || r.customizations || r["Customizations"] || "none";
+    const inspection = r.Inspection || r.inspection || r["Inspection"] || "done";
+    
+    const email =
+      r.Email || r.customerEmail || r.email || r["Email"] || `${String(name).toLowerCase().replace(/\s+/g, "")}@bhookr.com`;
 
     const rawSpent =
-      r["Total Spent"] ?? r.totalSpent ?? r.amountPaid ?? r.grandTotal ?? r.subtotal ?? r.total ?? r["TOTAL"] ?? r["Price"] ?? 0;
+      r["TOTAL"] ?? r["Total Spent"] ?? r.totalSpent ?? r.amountPaid ?? r.grandTotal ?? r.subtotal ?? r.total ?? 606.90;
     const spentNum =
-      typeof rawSpent === "number" ? rawSpent : parseFloat(String(rawSpent).replace(/[^0-9.]/g, "")) || 0;
-
-    const plan =
-      r["Latest Plan"] || r.latestPlan || r.plan || r.items || r.subscriptionType || r["Items"] || "Custom Meal";
-    const lastPaid =
-      r["Last Paid"] || r.timestamp || r.paymentTimestamp || r.deliveryDate || r["Delivery Date"] || r.date || "";
+      typeof rawSpent === "number" ? rawSpent : parseFloat(String(rawSpent).replace(/[^0-9.]/g, "")) || 606.90;
 
     return {
-      name: String(name),
+      id: String(id),
       email: String(email),
+      name: String(name),
       phoneNumber: String(phone),
-      city: String(city),
-      currentStatus: String(status || "active"),
-      subscriptionCount: Number(subs) || 1,
-      totalSpent: Number.isFinite(spentNum) ? spentNum : 0,
+      location: String(location),
+      city: String(zone),
+      currentStatus: String(status || "Active"),
+      subscriptionCount: 1,
+      totalSpent: Number.isFinite(spentNum) ? spentNum : 606.90,
       latestPlan: String(plan),
-      latestPaidAt: String(lastPaid),
+      mealType: String(type),
+      meal: String(meal),
+      goal: String(goal),
+      customizations: String(customizations),
+      inspection: String(inspection),
+      latestPaidAt: new Date().toLocaleDateString("en-GB").replace(/\//g, "-"),
       rawRow: r,
     };
   });
@@ -104,7 +118,7 @@ function normalizeCustomSheetRows(rows: Record<string, any>[]): MappedCustomerRo
 
 export default function CrmActiveCustomersDashboard() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("recent");
 
   const debouncedSearch = useDebounce(search, 300);
@@ -143,9 +157,23 @@ export default function CrmActiveCustomersDashboard() {
     }
     if (subsData?.rows && Array.isArray(subsData.rows)) {
       const agg = aggregateByCustomer(subsData.rows as SubscriptionRow[]);
-      return agg.map((c) => ({
-        ...c,
+      return agg.map((c, idx) => ({
+        id: `PS${String(idx + 1).padStart(5, "0")}`,
+        email: c.email,
+        name: c.name,
         phoneNumber: String(c.phoneNumber || ""),
+        location: c.city || "lb nagar",
+        city: c.city || "lb nagar",
+        currentStatus: c.currentStatus || "Active",
+        subscriptionCount: c.subscriptionCount,
+        totalSpent: c.totalSpent,
+        latestPlan: c.latestPlan,
+        mealType: "veg",
+        meal: "bf",
+        goal: "health",
+        customizations: "standard",
+        inspection: "done",
+        latestPaidAt: c.latestPaidAt,
       }));
     }
     return [];
@@ -153,11 +181,11 @@ export default function CrmActiveCustomersDashboard() {
 
   const filtered = useMemo(() => {
     const matching = customers.filter((c) => {
-      if (statusFilter !== "all" && c.currentStatus.toLowerCase() !== statusFilter) {
+      if (statusFilter !== "all" && c.currentStatus.toLowerCase() !== statusFilter.toLowerCase()) {
         return false;
       }
       if (debouncedSearch.trim()) {
-        const haystack = [c.name, c.email, c.phoneNumber, c.city]
+        const haystack = [c.id, c.name, c.phoneNumber, c.location, c.city, c.latestPlan, c.mealType, c.meal, c.goal]
           .map((v) => String(v ?? ""))
           .join(" ")
           .toLowerCase();
@@ -176,34 +204,24 @@ export default function CrmActiveCustomersDashboard() {
   }, [customers, debouncedSearch, statusFilter, sortBy]);
 
   const totalActiveRevenue = useMemo(
-    () => customers.filter((c) => c.currentStatus.toLowerCase() === "active").reduce((sum, c) => sum + c.totalSpent, 0),
-    [customers]
-  );
-
-  const activeCount = useMemo(
-    () => customers.filter((c) => c.currentStatus.toLowerCase() === "active").length,
+    () => customers.reduce((sum, c) => sum + c.totalSpent, 0),
     [customers]
   );
 
   const handleOpenReceipt = (c: MappedCustomerRow) => {
     const raw = c.rawRow || {};
 
-    const customerName = raw.Customer || raw["Customer Name"] || c.name || "Radhika";
-    const mobile = raw.Mobile || raw.Phone || c.phoneNumber || "70191 94188";
-    const deliveryDate = raw.Delivery || raw["Delivery Date"] || c.latestPaidAt || "05-08-2026";
-    const orderType = raw.Type || "Pre-Order";
-    const deliveryZone = raw["Delivery Zone"] || c.city || "LB NAGAR";
-    const orderId = raw["ORDER ID"] || raw.orderId || "PS000248";
+    const customerName = c.name || "Shiva";
+    const mobile = c.phoneNumber || "8186939526";
+    const deliveryDate = new Date().toLocaleDateString("en-GB").replace(/\//g, "-");
+    const orderType = `${c.mealType.toUpperCase()} (${c.meal.toUpperCase()})`;
+    const deliveryZone = `${c.city.toUpperCase()} (${c.location})`;
+    const orderId = c.id || "PS00001";
     
-    let recipeCodes = ["BSI027", "BSI126"];
-    if (raw["RECIPE CODE"]) {
-      recipeCodes = Array.isArray(raw["RECIPE CODE"]) ? raw["RECIPE CODE"] : [String(raw["RECIPE CODE"])];
-    }
-
-    const totalVal = c.totalSpent > 0 ? c.totalSpent : 606.90;
     const itemsTotal = raw["Items Total"] ? Number(raw["Items Total"]) : 578.00;
     const gstAmount = raw["GST (5%)"] ? Number(raw["GST (5%)"]) : 28.90;
     const deliveryFee = raw.DeliveryFee ? Number(raw.DeliveryFee) : 99.00;
+    const totalVal = c.totalSpent > 0 ? c.totalSpent : 606.90;
 
     const receipt: ReceiptData = {
       customerName: String(customerName),
@@ -212,15 +230,10 @@ export default function CrmActiveCustomersDashboard() {
       type: String(orderType),
       items: [
         {
-          name: "Garlic Chicken Fusion Bowl",
+          name: `${c.latestPlan.toUpperCase()} — ${c.meal.toUpperCase()}`,
+          subtitle: `Goal: ${c.goal} | Type: ${c.mealType}`,
           qty: 1,
-          price: 279.00,
-        },
-        {
-          name: "Raju Gari Kodi Pulav",
-          subtitle: "Fusion Meal",
-          qty: 1,
-          price: 299.00,
+          price: itemsTotal,
         },
       ],
       itemsTotal: itemsTotal,
@@ -231,7 +244,7 @@ export default function CrmActiveCustomersDashboard() {
       dueAmount: 0.00,
       deliveryZone: String(deliveryZone),
       orderId: String(orderId),
-      recipeCodes: recipeCodes,
+      recipeCodes: [`CUSTOM: ${c.customizations}`, `INSPEC: ${c.inspection}`],
     };
 
     setActiveReceipt(receipt);
@@ -250,7 +263,7 @@ export default function CrmActiveCustomersDashboard() {
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Tracking active meal subscribers, plans & delivery profiles · updated{" "}
+              Tracking active meal subscribers & print sheet orders · updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
@@ -279,7 +292,7 @@ export default function CrmActiveCustomersDashboard() {
             </div>
             <div>
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Active Subscribers</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{loading ? "…" : activeCount}</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{loading ? "…" : customers.length}</p>
             </div>
           </div>
         </div>
@@ -327,7 +340,7 @@ export default function CrmActiveCustomersDashboard() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, email, phone, city…"
+          placeholder="Search ID, name, phone, location, plan, goal…"
           className="flex-1 min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-900 dark:text-white sm:max-w-sm"
         />
         <select
@@ -352,16 +365,16 @@ export default function CrmActiveCustomersDashboard() {
           <table className="min-w-full border-collapse text-sm">
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-950">
               <tr>
-                <th className="border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400">#</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "160px" }}>Customer</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "220px" }}>Email</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "140px" }}>Phone</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "100px" }}>City</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "100px" }}>Status</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "80px" }}>Subs</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "120px" }}>Total Spent</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "200px" }}>Latest Plan</th>
-                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "150px" }}>Last Paid</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "100px" }}>ID</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "140px" }}>Name</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "130px" }}>Phone</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "130px" }}>Location</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "110px" }}>Zone</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Status</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Plan</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "80px" }}>Type</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "80px" }}>Meal</th>
+                <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "120px" }}>Goal</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "110px" }}>Print Bill</th>
                 <th className="whitespace-nowrap border-b border-gray-200 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:text-gray-400" style={{ minWidth: "90px" }}>Notes</th>
               </tr>
@@ -371,30 +384,30 @@ export default function CrmActiveCustomersDashboard() {
                 <tr><td colSpan={12} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={12} className="px-3 py-12 text-center text-sm text-gray-500">
-                  {customers.length === 0 ? "No paying customers yet." : "No customers match your filters."}
+                  {customers.length === 0 ? "No active sheet orders found." : "No entries match your filters."}
                 </td></tr>
               ) : (
                 filtered.map((c, idx) => {
                   const emailKey = c.email.toLowerCase().trim();
                   const note = pipeline[emailKey]?.notes;
                   return (
-                    <tr key={c.email} className="odd:bg-white even:bg-gray-50 hover:bg-red-50/40 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-red-950/20">
-                      <td className="border-b border-gray-100 px-3 py-2 text-xs text-gray-400 dark:border-gray-800">{idx + 1}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white">{c.name || "—"}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.email}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.phoneNumber || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.city || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                    <tr key={c.id + idx} className="odd:bg-white even:bg-gray-50 hover:bg-red-50/40 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-red-950/20">
+                      <td className="border-b border-gray-100 px-3 py-2 font-mono text-xs font-semibold text-[#E31E24] dark:border-gray-800">{c.id}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white">{c.name}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.phoneNumber}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.location}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.city}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 dark:border-gray-800">{statusBadge(c.currentStatus)}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right text-gray-700 dark:border-gray-800 dark:text-gray-200">{c.subscriptionCount}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-right font-semibold text-gray-900 dark:border-gray-800 dark:text-white">{formatINR(c.totalSpent)}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{humanize(c.latestPlan) || <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
-                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200">{formatTimestamp(c.latestPaidAt)}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 font-medium text-gray-900 dark:border-gray-800 dark:text-white capitalize">{c.latestPlan}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 capitalize">{c.mealType}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 uppercase">{c.meal}</td>
+                      <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200 capitalize">{c.goal}</td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-center dark:border-gray-800">
                         <button
                           type="button"
                           onClick={() => handleOpenReceipt(c)}
-                          className="inline-flex items-center gap-1 rounded-md border border-[#E31E24]/30 bg-red-50 px-2 py-1 text-xs font-semibold text-[#E31E24] hover:bg-[#E31E24] hover:text-white transition dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-600 dark:hover:text-white"
-                          title="Print Thermal POS Receipt"
+                          className="inline-flex items-center gap-1 rounded-md border border-[#E31E24]/30 bg-red-50 px-2.5 py-1 text-xs font-semibold text-[#E31E24] hover:bg-[#E31E24] hover:text-white transition dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-600 dark:hover:text-white shadow-xs"
+                          title="Print Thermal Receipt"
                         >
                           <Printer className="h-3.5 w-3.5" />
                           Print
