@@ -124,5 +124,34 @@ export async function GET(req: NextRequest) {
   });
 }
 
+export async function POST(req: NextRequest) {
+  const authStatus = await authorizeCrmStaff(req);
+  if (!authStatus.authorized) {
+    return NextResponse.json({ success: false, error: authStatus.error || "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const body = await req.json();
+    const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
+
+    if (!url) {
+      return NextResponse.json({ success: false, error: "Sheet URL not configured" }, { status: 500 });
+    }
+
+    // Pass data directly to Apps Script backend. No CORS so we just assume it succeeds.
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      mode: "no-cors",
+    });
+
+    return NextResponse.json({ success: true, message: "Customer added to sheet." });
+  } catch (error: any) {
+    console.error("[active_customers] Error adding customer:", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
 
 

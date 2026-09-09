@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
 import { PipelineTableSkeleton } from "@/components/crm/skeletons";
+import { AddCustomerModal } from "@/components/crm/add-customer-modal";
 
 type SortBy = "recent" | "spent-high" | "spent-low" | "name" | "count";
 
@@ -168,6 +169,7 @@ export default function CrmActiveCustomersDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
   const queryClient = useQueryClient();
@@ -297,14 +299,22 @@ export default function CrmActiveCustomersDashboard() {
             </p>
           )}
         </div>
-        <button
-          onClick={handleManualRefresh}
-          disabled={isRefreshing}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-          Sync Live Sheet
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setIsAddCustomerOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#E31E24] px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 shadow-sm"
+          >
+            Add Customer
+          </button>
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            Sync Live Sheet
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -490,6 +500,12 @@ export default function CrmActiveCustomersDashboard() {
         isOpen={!!activeReceipt}
         onClose={() => setActiveReceipt(null)}
         receipt={activeReceipt}
+      />
+
+      {/* Add Customer Modal */}
+      <AddCustomerModal
+        isOpen={isAddCustomerOpen}
+        onClose={() => setIsAddCustomerOpen(false)}
       />
     </div>
   );
