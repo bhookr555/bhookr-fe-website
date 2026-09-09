@@ -5,6 +5,7 @@ import {
   setCachedData,
   isCacheFresh,
 } from "@/lib/crm/cache";
+import { adminDb } from "@/lib/firebase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -68,10 +69,12 @@ export async function GET(req: NextRequest) {
   }
 
   const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
-  const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
 
-  // Only fetch from upstream if URL is configured AND is NOT pointing to old subscriptions sheet URL
-  if (url && url !== subsUrl) {
+  let mergedRows = [...SAMPLE_PRINT_SHEET_ROWS];
+  let isSample = true;
+
+  // Only fetch from upstream if URL is configured
+  if (url) {
     try {
       const upstream = await fetch(`${url}?action=list&t=${Date.now()}`, {
         method: "GET",
@@ -93,12 +96,8 @@ export async function GET(req: NextRequest) {
             firstRow["RECIPE_ID"] !== undefined;
 
           if (isSamplePrintFormat) {
-            setCachedData("active_customers_v9", data).catch((e) =>
-              console.warn("[active_customers] Cache write failed:", e)
-            );
-            return NextResponse.json(data, {
-              headers: { "X-Cache": "MISS", "Cache-Control": "no-cache, no-store, must-revalidate" },
-            });
+            mergedRows = data.rows;
+            isSample = false;
           }
         }
       }
@@ -107,20 +106,33 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Fallback to sample print sheet matching 1QGOfVihcDcaEhVJMn960zM0u0cenSyw_DHPYy6hE38E
-  const sampleData = {
+  // Fetch manually added customers from Firestore
+  try {
+    if (adminDb) {
+      const snapshot = await adminDb.collection("crm_manual_customers").get();
+      if (!snapshot.empty) {
+        const manualRows = snapshot.docs.map(doc => doc.data());
+        // Merge manual customers at the beginning so they appear at the top
+        mergedRows = [...manualRows, ...mergedRows];
+      }
+    }
+  } catch (dbError) {
+    console.warn("[active_customers] Failed to fetch manual customers from Firestore:", dbError);
+  }
+
+  const responseData = {
     success: true,
-    rows: SAMPLE_PRINT_SHEET_ROWS,
-    total: SAMPLE_PRINT_SHEET_ROWS.length,
-    source: "sample_print_sheet",
+    rows: mergedRows,
+    total: mergedRows.length,
+    source: isSample ? "sample_print_sheet_plus_manual" : "live_sheet_plus_manual",
   };
 
-  setCachedData("active_customers_v9", sampleData).catch((e) =>
-    console.warn("[active_customers] Cache sample write failed:", e)
+  setCachedData("active_customers_v9", responseData).catch((e) =>
+    console.warn("[active_customers] Cache write failed:", e)
   );
 
-  return NextResponse.json(sampleData, {
-    headers: { "X-Cache": "SAMPLE_PRINT_SHEET", "Cache-Control": "no-cache, no-store, must-revalidate" },
+  return NextResponse.json(responseData, {
+    headers: { "X-Cache": isSample ? "SAMPLE_PRINT_SHEET" : "MISS", "Cache-Control": "no-cache, no-store, must-revalidate" },
   });
 }
 
@@ -132,21 +144,33 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
-
-    if (!url) {
-      return NextResponse.json({ success: false, error: "Sheet URL not configured" }, { status: 500 });
+    
+    // Save to Firestore so it persists immediately
+    if (adminDb) {
+      const deliveryCode = body["DELIVERY CODE"] || `BDC_MANUAL_${Date.now()}`;
+      await adminDb.collection("crm_manual_customers").doc(deliveryCode).set({
+        ...body,
+        _createdAt: new Date().toISOString()
+      });
     }
 
-    // Pass data directly to Apps Script backend. No CORS so we just assume it succeeds.
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      mode: "no-cors",
-    });
+    const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
 
-    return NextResponse.json({ success: true, message: "Customer added to sheet." });
+    if (url) {
+      // Pass data directly to Apps Script backend. No CORS so we just assume it succeeds.
+      // We don't await this so it doesn't block the UI if Google timeout is long.
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        mode: "no-cors",
+      }).catch(err => console.warn("[active_customers] Google sheet sync failed:", err));
+    }
+
+    // Invalidate the cache to ensure the next GET fetches the newly added customer from Firestore
+    await setCachedData("active_customers_v9", null);
+
+    return NextResponse.json({ success: true, message: "Customer added successfully." });
   } catch (error: any) {
     console.error("[active_customers] Error adding customer:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
