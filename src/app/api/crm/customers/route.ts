@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
 
   const url = process.env.NEXT_PUBLIC_ACTIVE_CUSTOMERS_SHEET_URL;
 
-  let mergedRows = [...SAMPLE_PRINT_SHEET_ROWS];
+  let mergedRows: Record<string, any>[] = [...SAMPLE_PRINT_SHEET_ROWS];
   let isSample = true;
 
   // Only fetch from upstream if URL is configured
@@ -135,10 +135,10 @@ export async function GET(req: NextRequest) {
 
   // Filter out any duplicates between manual rows and sheet rows
   const existingSheetCodes = new Set(
-    mergedRows.map((r) => r["DELIVERY CODE"] || r["DELIVERY_CODE"] || r["Delivery Code"])
+    mergedRows.map((r: Record<string, any>) => r["DELIVERY CODE"] || r["DELIVERY_CODE"] || r["Delivery Code"])
   );
   const uniqueManualRows = combinedManualRows.filter(
-    (r) => !existingSheetCodes.has(r["DELIVERY CODE"] || r["DELIVERY_CODE"] || r["Delivery Code"])
+    (r: Record<string, any>) => !existingSheetCodes.has(r["DELIVERY CODE"] || r["DELIVERY_CODE"] || r["Delivery Code"])
   );
 
   // Prepend manual customers so they always appear at top
