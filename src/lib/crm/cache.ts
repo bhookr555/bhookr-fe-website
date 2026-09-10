@@ -53,7 +53,7 @@ export interface CrmCacheDoc<T = unknown> {
 
 /**
  * Read a cached document from Firestore.
- * Returns null if the document does not exist.
+ * Returns null if the document does not exist or has null content.
  */
 export async function getCachedData<T = unknown>(
   key: CrmCacheKey
@@ -63,7 +63,11 @@ export async function getCachedData<T = unknown>(
   try {
     const doc = await adminDb.collection(COLLECTION).doc(key).get();
     if (!doc.exists) return null;
-    return doc.data() as CrmCacheDoc<T>;
+    const docData = doc.data() as CrmCacheDoc<T>;
+    if (!docData || docData.data === null || docData.data === undefined) {
+      return null;
+    }
+    return docData;
   } catch (err) {
     console.warn(`[crm-cache] Read failed for key "${key}":`, err);
     return null;
@@ -91,6 +95,19 @@ export async function setCachedData<T = unknown>(
       } satisfies CrmCacheDoc<T>);
   } catch (err) {
     console.warn(`[crm-cache] Write failed for key "${key}":`, err);
+  }
+}
+
+/**
+ * Invalidate (delete) a cached document from Firestore.
+ */
+export async function invalidateCache(key: CrmCacheKey): Promise<void> {
+  if (!adminDb) return;
+
+  try {
+    await adminDb.collection(COLLECTION).doc(key).delete();
+  } catch (err) {
+    console.warn(`[crm-cache] Invalidate failed for key "${key}":`, err);
   }
 }
 
