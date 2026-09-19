@@ -16,7 +16,7 @@ import type { LeadRow } from "@/lib/crm/leads";
 
 export const dynamic = "force-dynamic";
 
-const GAS_TIMEOUT_MS = 15_000;
+const GAS_TIMEOUT_MS = 30_000;
 
 async function fetchGas(url: string, timeout = GAS_TIMEOUT_MS) {
   const ctrl = new AbortController();
@@ -29,8 +29,12 @@ async function fetchGas(url: string, timeout = GAS_TIMEOUT_MS) {
       redirect: "follow",
     });
     clearTimeout(timer);
-    if (!res.ok) throw new Error(`GAS returned ${res.status}`);
-    return res.json();
+    if (!res.ok) throw new Error(`GAS returned HTTP ${res.status}`);
+    const text = await res.text();
+    if (text.trim().startsWith("<") || text.includes("Page not found") || text.includes("errorMessage")) {
+      throw new Error("Google Apps Script Web App URL returned HTML error page (Page not found or un-deployed URL)");
+    }
+    return JSON.parse(text);
   } catch (err) {
     clearTimeout(timer);
     throw err;
@@ -61,9 +65,15 @@ async function backgroundRefreshGasData(
   const leadsUrl =
     process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
     "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
-  const clientFormUrl = process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL;
-  const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
-  const ordersUrl = process.env.NEXT_PUBLIC_ORDERS_SHEET_URL;
+  const clientFormUrl =
+    process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzc3I5F36RDqTJBw-LXgEeGNTXZHhXtgAYITaaQBxnZh6N_OWjbp8401P9W-lIOxqB5bg/exec";
+  const subsUrl =
+    process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbxmXhJ-Y9ua5FDullsaFRYa0BP_CI2jo8X40JzSDlwkk39jgs2c_PmEW5VZdA2OtzJW/exec";
+  const ordersUrl =
+    process.env.NEXT_PUBLIC_ORDERS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbx2j7CiZz2MUu0gAkX-Y5bGXwPUs7Xos24OZDAiGlFdii8E7nEfH4yXX97IS1YfWACuHQ/exec";
 
   const tasks: Promise<void>[] = [];
 
@@ -87,7 +97,7 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("leads_v7", freshDataClean, "background-swr");
+          await setCachedData("leads_v10", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] Leads refresh failed:", e);
         }
@@ -115,7 +125,7 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("client_form_v7", freshDataClean, "background-swr");
+          await setCachedData("client_form_v10", freshDataClean, "background-swr");
         } catch (e) {
           console.warn("[swr-bg] ClientForm refresh failed:", e);
         }
@@ -126,7 +136,7 @@ async function backgroundRefreshGasData(
   if (staleKeys.subscriptions && subsUrl) {
     tasks.push(
       fetchGas(subsUrl)
-        .then((d) => setCachedData("subscriptions_v7", d, "background-swr"))
+        .then((d) => setCachedData("subscriptions_v10", d, "background-swr"))
         .catch((e) => console.warn("[swr-bg] Subscriptions refresh failed:", e))
     );
   }
@@ -134,7 +144,7 @@ async function backgroundRefreshGasData(
   if (staleKeys.orders && ordersUrl) {
     tasks.push(
       fetchGas(ordersUrl)
-        .then((d) => setCachedData("orders_v7", normalizeOrders(d), "background-swr"))
+        .then((d) => setCachedData("orders_v10", normalizeOrders(d), "background-swr"))
         .catch((e) => console.warn("[swr-bg] Orders refresh failed:", e))
     );
   }
@@ -158,10 +168,10 @@ export async function GET(req: NextRequest) {
   // ── 2. Read all Firestore cache entries in parallel (<50ms) ───────────────
   const [cachedLeads, cachedClientForm, cachedSubs, cachedOrders] =
     await Promise.all([
-      getCachedData("leads_v7"),
-      getCachedData("client_form_v7"),
-      getCachedData("subscriptions_v7"),
-      getCachedData("orders_v7"),
+      getCachedData("leads_v10"),
+      getCachedData("client_form_v10"),
+      getCachedData("subscriptions_v10"),
+      getCachedData("orders_v10"),
     ]);
 
   const leadsData = cachedLeads?.data as { rows?: unknown[] } | undefined;
@@ -182,19 +192,8 @@ export async function GET(req: NextRequest) {
     orders: !ordersFresh,
   };
 
-  // If cache is populated, return IMMEDIATELY (<30ms response time!)
-  if (hasLeads && !forceRefresh) {
-    // If cache is stale, refresh Google Sheets in background via Next.js after()
-    if (Object.values(staleKeys).some(Boolean)) {
-      after(async () => {
-        try {
-          await backgroundRefreshGasData(staleKeys);
-        } catch (e) {
-          console.warn("[dashboard] after() background refresh error:", e);
-        }
-      });
-    }
-
+  // If ALL slices are fresh, return IMMEDIATELY (<30ms response time!)
+  if (!forceRefresh && leadsFresh && clientFormFresh && subsFresh && ordersFresh) {
     return NextResponse.json(
       {
         success: true,
@@ -216,15 +215,15 @@ export async function GET(req: NextRequest) {
     );
   }
 
-
+  // Synchronously fetch fresh Google Sheets data when stale or on forceRefresh
   await backgroundRefreshGasData(staleKeys);
 
   const [freshLeads, freshClientForm, freshSubs, freshOrders] =
     await Promise.all([
-      getCachedData("leads_v7"),
-      getCachedData("client_form_v7"),
-      getCachedData("subscriptions_v7"),
-      getCachedData("orders_v7"),
+      getCachedData("leads_v10"),
+      getCachedData("client_form_v10"),
+      getCachedData("subscriptions_v10"),
+      getCachedData("orders_v10"),
     ]);
 
   const freshLeadsData = freshLeads?.data as { rows?: unknown[] } | undefined;

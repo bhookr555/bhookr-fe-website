@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 async function fetchGasData(url: string): Promise<{ success: boolean; rows: LeadRow[]; total: number }> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
   try {
     const res = await fetch(`${url}?action=list`, {
       method: "GET",
@@ -23,7 +23,11 @@ async function fetchGasData(url: string): Promise<{ success: boolean; rows: Lead
     });
     clearTimeout(timer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const text = await res.text();
+    if (text.trim().startsWith("<") || text.includes("Page not found") || text.includes("errorMessage")) {
+      throw new Error("Google Apps Script Web App URL returned HTML error page (Page not found)");
+    }
+    const data = JSON.parse(text);
     return {
       success: true,
       rows: Array.isArray(data.rows) ? data.rows : [],
@@ -49,8 +53,8 @@ export async function GET(req: NextRequest) {
 
   // Read both slices from Firestore cache in parallel
   const [cachedLeads, cachedClientForm] = await Promise.all([
-    getCachedData<any>("leads"),
-    getCachedData<any>("client_form"),
+    getCachedData<any>("leads_v10"),
+    getCachedData<any>("client_form_v10"),
   ]);
 
   const websiteFresh = !forceRefresh && isCacheFresh(cachedLeads?.cachedAt, GAS_CACHE_TTL_MS);
@@ -62,7 +66,9 @@ export async function GET(req: NextRequest) {
   const websiteUrl =
     process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
     "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
-  const clientFormUrl = process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL;
+  const clientFormUrl =
+    process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzc3I5F36RDqTJBw-LXgEeGNTXZHhXtgAYITaaQBxnZh6N_OWjbp8401P9W-lIOxqB5bg/exec";
 
   // 1. Refresh website leads upstream if stale or missing
   if ((!websiteFresh || !websiteData) && websiteUrl) {
@@ -81,9 +87,10 @@ export async function GET(req: NextRequest) {
         total: mergedWebRows.length,
       };
 
-      setCachedData("leads", websiteData).catch((e) =>
-        console.warn("[leads API] Website leads cache write error:", e)
-      );
+      await Promise.all([
+        setCachedData("leads_v10", websiteData),
+        setCachedData("leads", websiteData),
+      ]).catch((e) => console.warn("[leads API] Website leads cache write error:", e));
     } catch (err) {
       console.warn("[leads API] Website leads upstream fetch failed, using cached fallback:", err);
     }
@@ -93,9 +100,10 @@ export async function GET(req: NextRequest) {
   if ((!clientFormFresh || !clientFormData) && clientFormUrl) {
     try {
       clientFormData = await fetchGasData(clientFormUrl);
-      setCachedData("client_form", clientFormData).catch((e) =>
-        console.warn("[leads API] Client form cache write error:", e)
-      );
+      await Promise.all([
+        setCachedData("client_form_v10", clientFormData),
+        setCachedData("client_form", clientFormData),
+      ]).catch((e) => console.warn("[leads API] Client form cache write error:", e));
     } catch (err) {
       console.warn("[leads API] Client form sheet upstream fetch failed, using cached fallback:", err);
     }

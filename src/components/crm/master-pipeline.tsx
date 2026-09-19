@@ -82,7 +82,7 @@ const ReportModal = dynamic(
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SortBy = "newest" | "oldest" | "name";
-type DateFilter = "all" | "today" | "single" | "range";
+type DateFilter = "all" | "today" | "24h" | "7d" | "single" | "range";
 type LeadSourceFilter = "all" | "website" | "client_form" | "ads";
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
@@ -226,7 +226,7 @@ export function MasterPipeline() {
   const [filter, setFilter] = useState<PipelineStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
-  const [dateMode, setDateMode] = useState<DateFilter>("today");
+  const [dateMode, setDateMode] = useState<DateFilter>("all");
   const [singleDate, setSingleDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -290,13 +290,20 @@ export function MasterPipeline() {
 
   const annotatedLeads = useMemo(() => {
     return leads.map((lead) => {
-      const eff = effectiveStatus(String(lead.email ?? ""), pipeline, verifiedEmails, lead.phoneNumber);
+      const eff = effectiveStatus(
+        String(lead.email ?? ""),
+        pipeline,
+        verifiedEmails,
+        lead.phoneNumber,
+        lead.status,
+        lead.name
+      );
       return {
         lead,
         status: eff.status,
         source: eff.source,
         dateKey: localDateString(lead.timestamp),
-        hasExplicitStatus: eff.source === "local" || eff.source === "online",
+        hasExplicitStatus: eff.source === "local" || eff.source === "online" || eff.source === "sheet",
       };
     });
   }, [leads, pipeline, verifiedEmails]);
@@ -306,6 +313,22 @@ export function MasterPipeline() {
     if (dateMode === "today") {
       if (!todayStr) return annotatedLeads;
       return annotatedLeads.filter((a) => a.dateKey === todayStr);
+    }
+    if (dateMode === "24h") {
+      const now = Date.now();
+      const h24Ms = 24 * 60 * 60 * 1000;
+      return annotatedLeads.filter((a) => {
+        const val = tsValue(a.lead.timestamp);
+        return val > 0 && now - val <= h24Ms;
+      });
+    }
+    if (dateMode === "7d") {
+      const now = Date.now();
+      const d7Ms = 7 * 24 * 60 * 60 * 1000;
+      return annotatedLeads.filter((a) => {
+        const val = tsValue(a.lead.timestamp);
+        return val > 0 && now - val <= d7Ms;
+      });
     }
     if (dateMode === "single") {
       if (!singleDate) return annotatedLeads;
@@ -573,12 +596,21 @@ export function MasterPipeline() {
 
   // ── Derived UI state ──────────────────────────────────────────────────────
   const dateModeLabel: Record<DateFilter, string> = {
-    all: "All time", today: "Today", single: "Specific date", range: "Date range",
+    all: "All time",
+    today: "Today",
+    "24h": "Last 24 hours",
+    "7d": "Last 7 days",
+    single: "Specific date",
+    range: "Date range",
   };
 
   const dateEmptyReason =
     dateMode === "today" && dateFilteredLeads.length === 0
-      ? `No leads captured today (${todayStr}). Try "All time" or pick a specific date.`
+      ? `No leads captured today (${todayStr}). Try "Last 24 hours", "Last 7 days", or "All time".`
+      : dateMode === "24h" && dateFilteredLeads.length === 0
+      ? `No leads captured in the last 24 hours.`
+      : dateMode === "7d" && dateFilteredLeads.length === 0
+      ? `No leads captured in the last 7 days.`
       : dateMode === "single" && singleDate && dateFilteredLeads.length === 0
       ? `No leads captured on ${singleDate}.`
       : dateMode === "range" && (startDate || endDate) && dateFilteredLeads.length === 0
@@ -764,6 +796,8 @@ export function MasterPipeline() {
         >
           <option value="all" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 All time</option>
           <option value="today" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Today&apos;s leads</option>
+          <option value="24h" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">⚡ Last 24 hours</option>
+          <option value="7d" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">🗓️ Last 7 days</option>
           <option value="single" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Specific date…</option>
           <option value="range" className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white">📅 Date range…</option>
         </select>
@@ -862,9 +896,41 @@ export function MasterPipeline() {
               {visible.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-500">
-                    {dateMode === "today"
-                      ? "No leads received today yet. Select 'All time' or 'Date range' above to view past leads."
-                      : dateEmptyReason ?? "No leads match this filter."}
+                    <div className="font-medium text-gray-700 dark:text-gray-300">
+                      {dateMode === "today"
+                        ? `No leads captured today (${todayStr}) yet.`
+                        : dateEmptyReason ?? "No leads match this filter."}
+                    </div>
+                    {dateMode !== "all" && (
+                      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDateMode("24h")}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300"
+                        >
+                          ⚡ View Last 24 Hours
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDateMode("7d")}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+                        >
+                          🗓️ View Last 7 Days
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateMode("all");
+                            setSingleDate("");
+                            setStartDate("");
+                            setEndDate("");
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#E31E24]/30 bg-red-50/70 px-3 py-1.5 text-xs font-semibold text-[#E31E24] shadow-sm hover:bg-red-100 transition dark:border-[#E31E24]/40 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-900/40"
+                        >
+                          📂 Show All Time Leads
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (

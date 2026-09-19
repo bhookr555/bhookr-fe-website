@@ -64,10 +64,18 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const leadsUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
-  const clientFormUrl = process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL;
-  const subsUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
-  const ordersUrl = process.env.NEXT_PUBLIC_ORDERS_SHEET_URL;
+  const leadsUrl =
+    process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
+  const clientFormUrl =
+    process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzc3I5F36RDqTJBw-LXgEeGNTXZHhXtgAYITaaQBxnZh6N_OWjbp8401P9W-lIOxqB5bg/exec";
+  const subsUrl =
+    process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbxmXhJ-Y9ua5FDullsaFRYa0BP_CI2jo8X40JzSDlwkk39jgs2c_PmEW5VZdA2OtzJW/exec";
+  const ordersUrl =
+    process.env.NEXT_PUBLIC_ORDERS_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbx2j7CiZz2MUu0gAkX-Y5bGXwPUs7Xos24OZDAiGlFdii8E7nEfH4yXX97IS1YfWACuHQ/exec";
 
   const startTime = Date.now();
   const results: Record<string, "synced" | "skipped" | "failed"> = {};

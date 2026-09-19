@@ -29,14 +29,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const url = process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL;
-  if (!url) {
-    // Client form is optional — return empty success instead of error
-    return NextResponse.json(
-      { success: true, rows: [], total: 0 },
-      { status: 200 }
-    );
-  }
+  const url =
+    process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL ||
+    "https://script.google.com/macros/s/AKfycbzc3I5F36RDqTJBw-LXgEeGNTXZHhXtgAYITaaQBxnZh6N_OWjbp8401P9W-lIOxqB5bg/exec";
 
   try {
     const upstream = await fetch(`${url}?action=list`, {

@@ -83,7 +83,7 @@ async function fetchPipeline(): Promise<PipelineResponse> {
     }
     const body = await res.json();
     const serverMap = body?.success && body?.pipeline ? body.pipeline : {};
-    const mergedMap = { ...serverMap, ...localPipeline };
+    const mergedMap = { ...localPipeline, ...serverMap };
     return { success: true, data: mergedMap };
   } catch (err) {
     console.warn("[fetchPipeline] API fetch failed, using local pipeline:", err);
@@ -99,7 +99,7 @@ async function fetchPipeline(): Promise<PipelineResponse> {
  * Old localStorage entries stored under a different version are automatically
  * discarded on the next page load — no manual Refresh needed.
  */
-const CACHE_VERSION = "v8"; // bump on each fix that changes lead data shape
+const CACHE_VERSION = "v10"; // bump on each fix that changes lead data shape
 const LS_CACHE_KEY = `bhookr_crm_dash_cache_${CACHE_VERSION}`;
 
 // Purge all old versioned cache keys except the current one

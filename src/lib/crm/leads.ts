@@ -103,15 +103,19 @@ export function parseLeadDate(input: Date | string | number | null | undefined):
     return new Date(year, month - 1, day, hh, mm, ss);
   }
 
-  // Handle slash or dash dates like "18/08/2026", "18-08-2026", "8/17/2026", "17/8/2026 11:24:27"
-  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:\s+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?)?/);
+  // Handle slash or dash dates like "18/08/2026", "18-08-2026", "8/17/2026", "17/8/2026, 5:07:38 pm"
+  const dateMatch = str.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})(?:[,\s]+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?\s*(am|pm)?)?/i);
   if (dateMatch) {
     const p1 = parseInt(dateMatch[1] || "0", 10);
     const p2 = parseInt(dateMatch[2] || "0", 10);
     const p3 = parseInt(dateMatch[3] || "0", 10);
-    const hh = parseInt(dateMatch[4] || "12", 10);
+    let hh = parseInt(dateMatch[4] || "12", 10);
     const mm = parseInt(dateMatch[5] || "0", 10);
     const ss = parseInt(dateMatch[6] || "0", 10);
+    const ampm = (dateMatch[7] || "").toLowerCase();
+
+    if (ampm === "pm" && hh < 12) hh += 12;
+    if (ampm === "am" && hh === 12) hh = 0;
 
     const year = p3 > 1000 ? p3 : (p1 > 1000 ? p1 : p3 + 2000);
 

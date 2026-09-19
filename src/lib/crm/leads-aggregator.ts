@@ -106,8 +106,11 @@ export function mergeLeadRows(primary: LeadRow, secondary: LeadRow): LeadRow {
 
 export function extractLeadTimestamp(lead: Record<string, any>): string | number {
   if (lead.timestamp) return lead.timestamp;
+  if (lead.Timestamp) return lead.Timestamp;
+  if (lead[""]) return lead[""];
+  if (lead[" Date"]) return lead[" Date"];
+  if (lead["Date"]) return lead["Date"];
   if (lead.Date_name) return lead.Date_name;
-  if (lead.Date) return lead.Date;
   if (lead.date_name) return lead.date_name;
   if (lead.date) return lead.date;
   if (lead.Submitted) return lead.Submitted;

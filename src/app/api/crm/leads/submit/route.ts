@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Update Firestore cache so CRM dashboard reflects the lead immediately
     try {
-      const cached = await getCachedData<any>("leads");
+      const cached = await getCachedData<any>("leads_v7");
       const existingRows = Array.isArray(cached?.data?.rows) ? cached.data.rows : [];
       const newRow = {
         ...body,
@@ -105,11 +105,17 @@ export async function POST(req: NextRequest) {
         updatedRows = [newRow, ...existingRows];
       }
 
-      await setCachedData("leads", {
+      const freshPayload = {
         ...cached?.data,
+        success: true,
         rows: updatedRows,
         total: updatedRows.length,
-      });
+      };
+
+      await Promise.all([
+        setCachedData("leads_v7", freshPayload, "submit-relay"),
+        setCachedData("leads", freshPayload, "submit-relay"),
+      ]);
     } catch (cacheErr) {
       console.warn("⚠️ Cache prepend error:", cacheErr);
     }

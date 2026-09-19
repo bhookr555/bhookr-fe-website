@@ -34,7 +34,11 @@ function doGet(e) {
       });
     }
 
-    const headers = values[0].map(function(h) { return String(h).trim(); });
+    const headers = values[0].map(function(h, idx) {
+      var s = String(h).trim();
+      if (idx === 0 && !s) return "timestamp";
+      return s;
+    });
     const rows = [];
 
     for (var i = 1; i < values.length; i++) {

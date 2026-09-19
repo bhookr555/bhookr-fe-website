@@ -269,18 +269,35 @@ export function cleanPhoneKey(phone?: string | number | null): string {
   return digits ? `phone_${digits}` : "";
 }
 
+export function normalizeSheetStatus(rawStatus?: string | null): PipelineStatus | null {
+  if (!rawStatus) return null;
+  const s = String(rawStatus).trim().toLowerCase().replace(/[-\s]+/g, "_");
+  if (s === "hot" || s === "hot_prospect" || s === "hotprospect") return "hot_prospect";
+  if (s === "followup" || s === "follow_up" || s === "follow_up_pending") return "follow_up";
+  if (s === "pending") return "pending";
+  if (s === "trial" || s === "trial_requested" || s === "trial_offered") return "trial_requested";
+  if (s === "future" || s === "future_prospect") return "future_prospect";
+  if (s === "converted" || s === "paid" || s === "active") return "converted";
+  if (s === "rejected" || s === "sale_rejected" || s === "lost") return "sale_rejected";
+  if (s === "new" || s === "lead") return "new";
+  return null;
+}
+
 /**
  * Determine the effective pipeline status for a lead.
  * A verified online payment (in Subscriptions sheet) always wins —
  * those leads show as "converted" regardless of local state.
- * Checks by email key first, then falls back to phone_XXXXXXXXXX key.
+ * Checks by email key first, then falls back to phone_XXXXXXXXXX key,
+ * raw phone digits, name, and finally status written in Google Sheets.
  */
 export function effectiveStatus(
   email: string,
   pipeline: PipelineMap,
   verifiedEmails: Set<string>,
-  phone?: string | number | null
-): { status: PipelineStatus; source: "online" | "local" | "default" } {
+  phone?: string | number | null,
+  sheetStatus?: string,
+  name?: string
+): { status: PipelineStatus; source: "online" | "local" | "sheet" | "default" } {
   const emailKey = normaliseEmail(email);
   if (emailKey && verifiedEmails.has(emailKey)) return { status: "converted", source: "online" };
 
@@ -291,6 +308,23 @@ export function effectiveStatus(
   const pKey = cleanPhoneKey(phone);
   if (pKey && pipeline[pKey]) {
     return { status: pipeline[pKey].status, source: "local" };
+  }
+
+  const rawDigits = String(phone ?? "").replace(/\D/g, "");
+  if (rawDigits) {
+    const pKey10 = `phone_${rawDigits.slice(-10)}`;
+    if (pipeline[pKey10]) return { status: pipeline[pKey10].status, source: "local" };
+    if (pipeline[rawDigits]) return { status: pipeline[rawDigits].status, source: "local" };
+  }
+
+  if (name) {
+    const nameKey = normaliseEmail(name);
+    if (nameKey && pipeline[nameKey]) return { status: pipeline[nameKey].status, source: "local" };
+  }
+
+  const fromSheet = normalizeSheetStatus(sheetStatus);
+  if (fromSheet) {
+    return { status: fromSheet, source: "sheet" };
   }
 
   return { status: "new", source: "default" };

@@ -122,7 +122,7 @@ function renderCell(row: LeadRow, key: keyof LeadRow): React.ReactNode {
 export default function CrmLeadsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PipelineStatus | "all">("all");
-  const [step7Only, setStep7Only] = useState(true);
+  const [step7Only, setStep7Only] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
 
   const debouncedSearch = useDebounce(search, 300);

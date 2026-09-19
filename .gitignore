@@ -62,3 +62,6 @@ eslint-*.json
 
 # Test files (dev only)
 test-*.js
+scratch/
+.playwright-mcp/
+
