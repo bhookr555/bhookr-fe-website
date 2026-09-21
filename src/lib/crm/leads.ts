@@ -86,7 +86,13 @@ export function parseLeadDate(input: Date | string | number | null | undefined):
     if (!Number.isNaN(d.getTime())) return d;
   }
 
-  // Handle ISO strings like "2026-08-17T18:30:00.000Z" or "2026-08-17T08:18:51.422Z" or "2026-08-17 18:30:00"
+  // Handle ISO strings with timezone info like "2026-09-20T19:50:03.391Z" or "2026-09-20T19:50:03+05:30"
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    const stdDate = new Date(str);
+    if (!Number.isNaN(stdDate.getTime())) return stdDate;
+  }
+
+  // Handle ISO strings without timezone specifiers like "2026-08-17 18:30:00"
   const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2})[:\.](\d{2})(?:[:\.](\d{2}))?)?/);
   if (isoMatch) {
     const year = parseInt(isoMatch[1] || "0", 10);

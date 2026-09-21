@@ -4,6 +4,7 @@ import {
   setCachedData,
   GAS_CACHE_TTL_MS,
 } from "@/lib/crm/cache";
+import { sanitizeLeadRow } from "@/lib/crm/leads-aggregator";
 
 /**
  * Background GAS → Firestore sync job.
@@ -89,11 +90,21 @@ export async function GET(req: NextRequest) {
       ordersUrl ? fetchGasData(ordersUrl) : Promise.reject(new Error("No URL")),
     ]);
 
-  // Write successful fetches to Firestore cache
+function sanitizeGasPayload(data: any) {
+  if (!data || !Array.isArray(data.rows)) return data;
+  return {
+    ...data,
+    rows: data.rows.map(sanitizeLeadRow),
+  };
+}
+
+// Write successful fetches to Firestore cache
   const writes: Promise<void>[] = [];
 
   if (leadsResult.status === "fulfilled" && leadsResult.value) {
-    writes.push(setCachedData("leads", leadsResult.value, "cron"));
+    const cleanValue = sanitizeGasPayload(leadsResult.value);
+    writes.push(setCachedData("leads_v10", cleanValue, "cron"));
+    writes.push(setCachedData("leads", cleanValue, "cron"));
     results.leads = "synced";
   } else {
     results.leads = "failed";
@@ -101,13 +112,16 @@ export async function GET(req: NextRequest) {
   }
 
   if (clientFormResult.status === "fulfilled" && clientFormResult.value) {
-    writes.push(setCachedData("client_form", clientFormResult.value, "cron"));
+    const cleanValue = sanitizeGasPayload(clientFormResult.value);
+    writes.push(setCachedData("client_form_v10", cleanValue, "cron"));
+    writes.push(setCachedData("client_form", cleanValue, "cron"));
     results.clientForm = "synced";
   } else {
     results.clientForm = clientFormUrl ? "failed" : "skipped";
   }
 
   if (subsResult.status === "fulfilled" && subsResult.value) {
+    writes.push(setCachedData("subscriptions_v10", subsResult.value, "cron"));
     writes.push(setCachedData("subscriptions", subsResult.value, "cron"));
     results.subscriptions = "synced";
   } else {
@@ -117,6 +131,7 @@ export async function GET(req: NextRequest) {
 
   if (ordersResult.status === "fulfilled" && ordersResult.value) {
     const normalized = normalizeOrders(ordersResult.value);
+    writes.push(setCachedData("orders_v10", normalized, "cron"));
     writes.push(setCachedData("orders", normalized, "cron"));
     results.orders = "synced";
   } else {

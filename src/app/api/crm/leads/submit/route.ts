@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
       };
 
       await Promise.all([
+        setCachedData("leads_v10", freshPayload, "submit-relay"),
         setCachedData("leads_v7", freshPayload, "submit-relay"),
         setCachedData("leads", freshPayload, "submit-relay"),
       ]);

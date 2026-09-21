@@ -156,32 +156,48 @@ function sourceLabel(src: string | undefined): string {
  *    `allSources` is set to the union of source labels.
  * 4. Returns a single unified array sorted by timestamp (newest first).
  */
+export function sanitizeLeadRow<T extends Record<string, any>>(row: T): T {
+  if (!row || typeof row !== "object") return row;
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(row)) {
+    const k = String(key).trim();
+    if (k === "") {
+      if (!clean.timestamp && val) {
+        clean.timestamp = val;
+      }
+    } else {
+      clean[k] = val;
+    }
+  }
+  return clean as T;
+}
+
 export function deduplicateAndMergeLeads(
   websiteLeads: LeadRow[] = [],
   clientFormLeads: LeadRow[] = []
 ): MergedLeadRow[] {
   const normalizedWeb: MergedLeadRow[] = websiteLeads.map((r) => {
-    const raw = r as Record<string, any>;
+    const raw = sanitizeLeadRow(r as Record<string, any>);
     return {
-      ...r,
-      name: extractLeadName(raw) || r.name || "",
-      timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
+      ...raw,
+      name: extractLeadName(raw) || raw.name || "",
+      timestamp: extractLeadTimestamp(raw) || raw.timestamp || "",
       leadSource: "website",
       allSources: ["Website Lead"],
-    };
+    } as MergedLeadRow;
   });
 
   const normalizedClient: MergedLeadRow[] = clientFormLeads.map((r) => {
-    const raw = r as Record<string, any>;
+    const raw = sanitizeLeadRow(r as Record<string, any>);
     const hasUtm = !!(raw.utmSource || raw.utmSubSource);
     const src = hasUtm ? "website" : "client_form";
     return {
-      ...r,
-      name: extractLeadName(raw) || r.name || "",
-      timestamp: extractLeadTimestamp(raw) || r.timestamp || "",
+      ...raw,
+      name: extractLeadName(raw) || raw.name || "",
+      timestamp: extractLeadTimestamp(raw) || raw.timestamp || "",
       leadSource: src,
       allSources: [sourceLabel(src)],
-    };
+    } as MergedLeadRow;
   });
 
   // Index buckets: phone → index, email → index

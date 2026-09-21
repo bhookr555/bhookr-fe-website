@@ -11,6 +11,7 @@ import {
   getMergedLeadsCached,
   extractLeadName,
   extractLeadTimestamp,
+  sanitizeLeadRow,
 } from "@/lib/crm/leads-aggregator";
 import type { LeadRow } from "@/lib/crm/leads";
 
@@ -83,12 +84,15 @@ async function backgroundRefreshGasData(
         try {
           const freshData = await fetchGas(leadsUrl);
           const freshRows: LeadRow[] = Array.isArray(freshData?.rows)
-            ? freshData.rows.map((r: any) => ({
-                ...r,
-                name: extractLeadName(r) || r.name || "",
-                timestamp: extractLeadTimestamp(r) || r.timestamp || "",
-                leadSource: "website" as const,
-              }))
+            ? freshData.rows.map((r: any) => {
+                const s = sanitizeLeadRow(r);
+                return {
+                  ...s,
+                  name: extractLeadName(s) || s.name || "",
+                  timestamp: extractLeadTimestamp(s) || s.timestamp || "",
+                  leadSource: "website" as const,
+                };
+              })
             : [];
 
           const freshDataClean = {
@@ -97,7 +101,10 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("leads_v10", freshDataClean, "background-swr");
+          await Promise.all([
+            setCachedData("leads_v10", freshDataClean, "background-swr"),
+            setCachedData("leads", freshDataClean, "background-swr"),
+          ]);
         } catch (e) {
           console.warn("[swr-bg] Leads refresh failed:", e);
         }
@@ -111,12 +118,15 @@ async function backgroundRefreshGasData(
         try {
           const freshData = await fetchGas(clientFormUrl);
           const freshRows: LeadRow[] = Array.isArray(freshData?.rows)
-            ? freshData.rows.map((r: any) => ({
-                ...r,
-                name: extractLeadName(r) || r.name || "",
-                timestamp: extractLeadTimestamp(r) || r.timestamp || "",
-                leadSource: "client_form" as const,
-              }))
+            ? freshData.rows.map((r: any) => {
+                const s = sanitizeLeadRow(r);
+                return {
+                  ...s,
+                  name: extractLeadName(s) || s.name || "",
+                  timestamp: extractLeadTimestamp(s) || s.timestamp || "",
+                  leadSource: "client_form" as const,
+                };
+              })
             : [];
 
           const freshDataClean = {
@@ -125,7 +135,10 @@ async function backgroundRefreshGasData(
             total: freshRows.length,
           };
 
-          await setCachedData("client_form_v10", freshDataClean, "background-swr");
+          await Promise.all([
+            setCachedData("client_form_v10", freshDataClean, "background-swr"),
+            setCachedData("client_form", freshDataClean, "background-swr"),
+          ]);
         } catch (e) {
           console.warn("[swr-bg] ClientForm refresh failed:", e);
         }
@@ -135,17 +148,34 @@ async function backgroundRefreshGasData(
 
   if (staleKeys.subscriptions && subsUrl) {
     tasks.push(
-      fetchGas(subsUrl)
-        .then((d) => setCachedData("subscriptions_v10", d, "background-swr"))
-        .catch((e) => console.warn("[swr-bg] Subscriptions refresh failed:", e))
+      (async () => {
+        try {
+          const d = await fetchGas(subsUrl);
+          await Promise.all([
+            setCachedData("subscriptions_v10", d, "background-swr"),
+            setCachedData("subscriptions", d, "background-swr"),
+          ]);
+        } catch (e) {
+          console.warn("[swr-bg] Subscriptions refresh failed:", e);
+        }
+      })()
     );
   }
 
   if (staleKeys.orders && ordersUrl) {
     tasks.push(
-      fetchGas(ordersUrl)
-        .then((d) => setCachedData("orders_v10", normalizeOrders(d), "background-swr"))
-        .catch((e) => console.warn("[swr-bg] Orders refresh failed:", e))
+      (async () => {
+        try {
+          const d = await fetchGas(ordersUrl);
+          const normalized = normalizeOrders(d);
+          await Promise.all([
+            setCachedData("orders_v10", normalized, "background-swr"),
+            setCachedData("orders", normalized, "background-swr"),
+          ]);
+        } catch (e) {
+          console.warn("[swr-bg] Orders refresh failed:", e);
+        }
+      })()
     );
   }
 
