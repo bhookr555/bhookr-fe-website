@@ -84,6 +84,15 @@ async function fetchPipeline(): Promise<PipelineResponse> {
     const body = await res.json();
     const serverMap = body?.success && body?.pipeline ? body.pipeline : {};
     const mergedMap = { ...localPipeline, ...serverMap };
+
+    if (typeof window !== "undefined" && Object.keys(mergedMap).length > 0) {
+      try {
+        localStorage.setItem("bhookr_crm_pipeline_v1", JSON.stringify(mergedMap));
+      } catch {
+        // ignore quota errors
+      }
+    }
+
     return { success: true, data: mergedMap };
   } catch (err) {
     console.warn("[fetchPipeline] API fetch failed, using local pipeline:", err);

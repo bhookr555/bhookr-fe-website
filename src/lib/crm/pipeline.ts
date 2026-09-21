@@ -359,6 +359,9 @@ export async function setPipelineStatusApi(
     const pKey = cleanPhoneKey(extras?.phone);
     if (!key && !pKey) return false;
 
+    // Synchronously update local storage map for instant 0ms persistence on device
+    setPipelineStatus(email, status, role, extras);
+
     let success = false;
     if (key) {
       const res = await fetch("/api/crm/pipeline", {

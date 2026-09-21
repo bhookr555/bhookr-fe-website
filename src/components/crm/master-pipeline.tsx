@@ -223,7 +223,32 @@ export function MasterPipeline() {
   const invalidatePipeline = useInvalidateDashboard();
 
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [filter, setFilter] = useState<PipelineStatus | "all">("all");
+  const [filter, setFilterState] = useState<PipelineStatus | "all">("all");
+
+  // Restore active status filter chip from localStorage on mount so agent picks up right where she left off
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const savedFilter = localStorage.getItem("bhookr_crm_active_status_chip");
+        if (savedFilter) {
+          setFilterState(savedFilter as PipelineStatus | "all");
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const setFilter = useCallback((newFilter: PipelineStatus | "all") => {
+    setFilterState(newFilter);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("bhookr_crm_active_status_chip", newFilter);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [dateMode, setDateMode] = useState<DateFilter>("all");

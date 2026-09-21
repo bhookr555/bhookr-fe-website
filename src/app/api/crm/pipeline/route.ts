@@ -190,6 +190,22 @@ export async function POST(req: NextRequest) {
     // merge: true preserves all existing fields (notes, noteHistory, etc.)
     await docRef.set(payload, { merge: true });
 
+    // Asynchronously forward status update to Google Sheets Apps Script so Column P (status) stays updated
+    const leadsUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
+    if (leadsUrl && status) {
+      const sheetPayload = {
+        email: key.includes("@") ? key : extras?.email || "",
+        phoneNumber: extras?.phone || (key.startsWith("phone_") ? key.replace("phone_", "") : ""),
+        status: status,
+      };
+      fetch(leadsUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(sheetPayload),
+        redirect: "follow",
+      }).catch((err) => console.warn("[pipeline API] Google Sheet status sync warning:", err));
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to update pipeline";
