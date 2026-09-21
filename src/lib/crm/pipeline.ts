@@ -301,25 +301,58 @@ export function effectiveStatus(
   const emailKey = normaliseEmail(email);
   if (emailKey && verifiedEmails.has(emailKey)) return { status: "converted", source: "online" };
 
-  if (emailKey && pipeline[emailKey]) {
-    return { status: pipeline[emailKey].status, source: "local" };
+  const entryByEmail = emailKey ? pipeline[emailKey] : undefined;
+  if (entryByEmail?.status) {
+    return { status: entryByEmail.status, source: "local" };
+  }
+
+  const strippedEmail = emailKey.replace(/\s+/g, "");
+  const entryByStripped = strippedEmail ? pipeline[strippedEmail] : undefined;
+  if (entryByStripped?.status) {
+    return { status: entryByStripped.status, source: "local" };
   }
 
   const pKey = cleanPhoneKey(phone);
-  if (pKey && pipeline[pKey]) {
-    return { status: pipeline[pKey].status, source: "local" };
+  const entryByPKey = pKey ? pipeline[pKey] : undefined;
+  if (entryByPKey?.status) {
+    return { status: entryByPKey.status, source: "local" };
   }
 
   const rawDigits = String(phone ?? "").replace(/\D/g, "");
   if (rawDigits) {
     const pKey10 = `phone_${rawDigits.slice(-10)}`;
-    if (pipeline[pKey10]) return { status: pipeline[pKey10].status, source: "local" };
-    if (pipeline[rawDigits]) return { status: pipeline[rawDigits].status, source: "local" };
+    const e10 = pipeline[pKey10];
+    if (e10?.status) return { status: e10.status, source: "local" };
+
+    const eRaw = pipeline[rawDigits];
+    if (eRaw?.status) return { status: eRaw.status, source: "local" };
+
+    if (rawDigits.length >= 10) {
+      const eSlice = pipeline[rawDigits.slice(-10)];
+      if (eSlice?.status) return { status: eSlice.status, source: "local" };
+    }
   }
 
   if (name) {
     const nameKey = normaliseEmail(name);
-    if (nameKey && pipeline[nameKey]) return { status: pipeline[nameKey].status, source: "local" };
+    const eName = nameKey ? pipeline[nameKey] : undefined;
+    if (eName?.status) return { status: eName.status, source: "local" };
+  }
+
+  if (emailKey || rawDigits) {
+    const normSearch = emailKey.replace(/\s+/g, "");
+    const last10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+
+    for (const [pDocId, pEntry] of Object.entries(pipeline)) {
+      if (!pEntry?.status) continue;
+      const pNorm = pDocId.toLowerCase().replace(/\s+/g, "");
+      if (normSearch && normSearch.length > 4 && (pNorm === normSearch || pNorm.includes(normSearch))) {
+        return { status: pEntry.status, source: "local" };
+      }
+      if (last10 && last10.length >= 8 && pNorm.includes(last10)) {
+        return { status: pEntry.status, source: "local" };
+      }
+    }
   }
 
   const fromSheet = normalizeSheetStatus(sheetStatus);

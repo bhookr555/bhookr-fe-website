@@ -224,15 +224,25 @@ export function MasterPipeline() {
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [filter, setFilterState] = useState<PipelineStatus | "all">("all");
+  const [sortBy, setSortByState] = useState<SortBy>("newest");
+  const [dateMode, setDateModeState] = useState<DateFilter>("all");
+  const [sourceFilter, setSourceFilterState] = useState<LeadSourceFilter>("all");
 
-  // Restore active status filter chip from localStorage on mount so agent picks up right where she left off
+  // Restore filter settings from localStorage on mount so state persists across page reloads / tabs
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
         const savedFilter = localStorage.getItem("bhookr_crm_active_status_chip");
-        if (savedFilter) {
-          setFilterState(savedFilter as PipelineStatus | "all");
-        }
+        if (savedFilter) setFilterState(savedFilter as PipelineStatus | "all");
+
+        const savedDateMode = localStorage.getItem("bhookr_crm_active_date_mode");
+        if (savedDateMode) setDateModeState(savedDateMode as DateFilter);
+
+        const savedSourceFilter = localStorage.getItem("bhookr_crm_active_source_filter");
+        if (savedSourceFilter) setSourceFilterState(savedSourceFilter as LeadSourceFilter);
+
+        const savedSortBy = localStorage.getItem("bhookr_crm_active_sort_by");
+        if (savedSortBy) setSortByState(savedSortBy as SortBy);
       } catch {
         // ignore
       }
@@ -249,13 +259,44 @@ export function MasterPipeline() {
       }
     }
   }, []);
+
+  const setDateMode = useCallback((newMode: DateFilter) => {
+    setDateModeState(newMode);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("bhookr_crm_active_date_mode", newMode);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const setSourceFilter = useCallback((newSource: LeadSourceFilter) => {
+    setSourceFilterState(newSource);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("bhookr_crm_active_source_filter", newSource);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const setSortBy = useCallback((newSort: SortBy) => {
+    setSortByState(newSort);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("bhookr_crm_active_sort_by", newSort);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<SortBy>("newest");
-  const [dateMode, setDateMode] = useState<DateFilter>("all");
   const [singleDate, setSingleDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>("all");
   const [exportOpen, setExportOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportInitialMode, setReportInitialMode] = useState<"today" | "range">("today");
@@ -372,23 +413,25 @@ export function MasterPipeline() {
 
   const counts = useMemo(() => {
     const map: Record<PipelineStatus | "all", number> = {
-      all: dateFilteredLeads.length,
+      all: annotatedLeads.length,
       new: 0, pending: 0, follow_up: 0, trial_requested: 0,
       hot_prospect: 0, future_prospect: 0, converted: 0, sale_rejected: 0,
     };
-    for (const a of dateFilteredLeads) {
+    for (const a of annotatedLeads) {
       if (map[a.status] !== undefined) {
         map[a.status]++;
       }
     }
     return map;
-  }, [dateFilteredLeads]);
+  }, [annotatedLeads]);
 
   // ── VISIBLE rows — uses debouncedSearch, not live search ─────────────────
   // WHY: Without debounce, every keystroke triggers this useMemo over potentially
   // hundreds of rows. At 300ms debounce, the filter runs at most once per typing pause.
   const visible = useMemo(() => {
-    const matching = dateFilteredLeads.filter((a) => {
+    const leadsToFilter = filter !== "all" ? annotatedLeads : dateFilteredLeads;
+
+    const matching = leadsToFilter.filter((a) => {
       if (sourceFilter !== "all") {
         if (sourceFilter === "ads") {
           const src = String(a.lead.utmSource || "").trim();
@@ -420,7 +463,7 @@ export function MasterPipeline() {
       );
     }
     return sorted;
-  }, [dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter]);
+  }, [annotatedLeads, dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
