@@ -38,17 +38,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { moduleId: "dashboard", label: "Sales Dashboard", href: "/crm/dashboard", icon: LayoutDashboard, built: true },
-  { moduleId: "customers", label: "Active Customers", href: "/crm/customers", icon: Utensils, built: true },
-  { moduleId: "renewals", label: "Renewals", href: "/crm/renewals", icon: RotateCw, built: true },
-  { moduleId: "subscriptions", label: "Subscriptions", href: "/crm/subscriptions", icon: Package, built: false },
-  { moduleId: "orders", label: "Orders", href: "/crm/orders", icon: ShoppingBag, built: false },
-  { moduleId: "locations", label: "Locations", href: "/crm/locations", icon: Map, built: false },
-  { moduleId: "whatsapp", label: "WhatsApp", href: "/crm/whatsapp", icon: MessageCircle, built: false },
-  { moduleId: "billing", label: "Billing", href: "/crm/billing", icon: Receipt, built: true },
-  { moduleId: "inventory", label: "Inventory", href: "/crm/inventory", icon: Boxes, built: false },
-  { moduleId: "analytics", label: "Analytics", href: "/crm/analytics", icon: LineChart, built: false },
-  { moduleId: "settings", label: "Settings", href: "/crm/settings", icon: Settings, built: true },
-  { moduleId: "report", label: "Project Report", href: "/crm/report", icon: FileText, built: false },
 ];
 
 interface CrmSidebarProps {

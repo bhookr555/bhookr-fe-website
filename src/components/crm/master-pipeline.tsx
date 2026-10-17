@@ -236,7 +236,11 @@ export function MasterPipeline() {
         if (savedFilter) setFilterState(savedFilter as PipelineStatus | "all");
 
         const savedDateMode = localStorage.getItem("bhookr_crm_active_date_mode");
-        if (savedDateMode) setDateModeState(savedDateMode as DateFilter);
+        if (savedDateMode && savedDateMode !== "today") {
+          setDateModeState(savedDateMode as DateFilter);
+        } else {
+          setDateModeState("all");
+        }
 
         const savedSourceFilter = localStorage.getItem("bhookr_crm_active_source_filter");
         if (savedSourceFilter) setSourceFilterState(savedSourceFilter as LeadSourceFilter);

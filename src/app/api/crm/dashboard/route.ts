@@ -1,189 +1,108 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { authorizeCrmStaff } from "@/lib/api-auth";
-import {
-  getCachedData,
-  setCachedData,
-  isCacheFresh,
-  GAS_CACHE_TTL_MS,
-} from "@/lib/crm/cache";
-import {
-  deduplicateAndMergeLeads,
-  getMergedLeadsCached,
-  extractLeadName,
-  extractLeadTimestamp,
-  sanitizeLeadRow,
-} from "@/lib/crm/leads-aggregator";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import type { LeadRow } from "@/lib/crm/leads";
+import type { SubscriptionRow } from "@/lib/crm/subscriptions";
+import type { OrderRow } from "@/lib/crm/orders";
 
 export const dynamic = "force-dynamic";
 
-const GAS_TIMEOUT_MS = 30_000;
-
-async function fetchGas(url: string, timeout = GAS_TIMEOUT_MS) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeout);
-  try {
-    const res = await fetch(`${url}?action=list`, {
-      method: "GET",
-      cache: "no-store",
-      signal: ctrl.signal,
-      redirect: "follow",
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`GAS returned HTTP ${res.status}`);
-    const text = await res.text();
-    if (text.trim().startsWith("<") || text.includes("Page not found") || text.includes("errorMessage")) {
-      throw new Error("Google Apps Script Web App URL returned HTML error page (Page not found or un-deployed URL)");
-    }
-    return JSON.parse(text);
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
-  }
+function mapSupabaseLead(row: Record<string, any>, source: "website" | "client_form"): LeadRow {
+  return {
+    timestamp: row.created_at,
+    name: row.name || "Lead",
+    email: row.email || "",
+    phoneNumber: row.phone_number || "",
+    age: row.age ?? "",
+    gender: row.gender || "",
+    height: row.height ?? "",
+    weight: row.weight ?? "",
+    goal: row.goal || "",
+    diet: row.diet || "",
+    foodPreference: row.food_preference || "",
+    physicalState: row.physical_state || "",
+    subscriptionType: row.subscription_type || "",
+    plan: row.plan || "",
+    subscriptionStartDate: row.subscription_start_date || "",
+    status: row.status || "lead",
+    lastStepCompleted: row.last_step_completed ?? 0,
+    checkoutVisited: Boolean(row.checkout_visited),
+    utmSource: row.utm_source || "",
+    utmSubSource: row.utm_sub_source || "",
+    foodLove: row.food_love || "",
+    leadSource: source,
+  };
 }
 
-function normalizeOrders(raw: { rows?: Record<string, unknown>[] } | null) {
-  if (!raw?.rows) return raw;
-  raw.rows = raw.rows.map((row) => {
-    if (row && "KI " in row && !("timestamp" in row)) {
-      const { ["KI "]: ts, ...rest } = row;
-      return { timestamp: ts, ...rest };
-    }
-    return row;
-  });
-  return raw;
+function mapSupabaseSubscription(row: Record<string, any>): SubscriptionRow {
+  return {
+    timestamp: row.created_at,
+    name: row.name || "",
+    email: row.email || "",
+    phoneNumber: row.phone_number || "",
+    age: row.age ?? "",
+    gender: row.gender || "",
+    height: row.height ?? "",
+    weight: row.weight ?? "",
+    goal: row.goal || "",
+    diet: row.diet || "",
+    foodPreference: row.food_preference || "",
+    physicalState: row.physical_state || "",
+    subscriptionType: row.subscription_type || "",
+    plan: row.plan || "",
+    subscriptionStartDate: row.subscription_start_date || "",
+    subscriptionEndDate: row.subscription_end_date || "",
+    deliveryFullName: row.delivery_full_name || "",
+    deliveryPhone: row.delivery_phone || "",
+    deliveryAddress: row.delivery_address || "",
+    deliveryCity: row.delivery_city || "",
+    deliveryState: row.delivery_state || "",
+    deliveryPinCode: row.delivery_pin_code || "",
+    paymentStatus: row.payment_status || "success",
+    transactionId: row.transaction_id || "",
+    orderId: row.order_id || "",
+    amountPaid: row.amount_paid ?? 0,
+    paymentMethod: row.payment_method || "",
+    paymentTimestamp: row.payment_timestamp || row.created_at,
+    status: row.status || "active",
+  };
 }
 
-/** Asynchronously refresh stale items in the background without blocking HTTP response */
-async function backgroundRefreshGasData(
-  staleKeys: {
-    leads: boolean;
-    clientForm: boolean;
-    subscriptions: boolean;
-    orders: boolean;
-  }
-) {
-  const leadsUrl =
-    process.env.NEXT_PUBLIC_LEADS_SHEET_URL ||
-    "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
-  const clientFormUrl =
-    process.env.NEXT_PUBLIC_CLIENT_FORM_SHEET_URL ||
-    "https://script.google.com/macros/s/AKfycbzc3I5F36RDqTJBw-LXgEeGNTXZHhXtgAYITaaQBxnZh6N_OWjbp8401P9W-lIOxqB5bg/exec";
-  const subsUrl =
-    process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL ||
-    "https://script.google.com/macros/s/AKfycbxmXhJ-Y9ua5FDullsaFRYa0BP_CI2jo8X40JzSDlwkk39jgs2c_PmEW5VZdA2OtzJW/exec";
-  const ordersUrl =
-    process.env.NEXT_PUBLIC_ORDERS_SHEET_URL ||
-    "https://script.google.com/macros/s/AKfycbx2j7CiZz2MUu0gAkX-Y5bGXwPUs7Xos24OZDAiGlFdii8E7nEfH4yXX97IS1YfWACuHQ/exec";
-
-  const tasks: Promise<void>[] = [];
-
-  if (staleKeys.leads && leadsUrl) {
-    tasks.push(
-      (async () => {
-        try {
-          const freshData = await fetchGas(leadsUrl);
-          const freshRows: LeadRow[] = Array.isArray(freshData?.rows)
-            ? freshData.rows.map((r: any) => {
-                const s = sanitizeLeadRow(r);
-                return {
-                  ...s,
-                  name: extractLeadName(s) || s.name || "",
-                  timestamp: extractLeadTimestamp(s) || s.timestamp || "",
-                  leadSource: "website" as const,
-                };
-              })
-            : [];
-
-          const freshDataClean = {
-            success: true,
-            rows: freshRows,
-            total: freshRows.length,
-          };
-
-          await Promise.all([
-            setCachedData("leads_v10", freshDataClean, "background-swr"),
-            setCachedData("leads", freshDataClean, "background-swr"),
-          ]);
-        } catch (e) {
-          console.warn("[swr-bg] Leads refresh failed:", e);
-        }
-      })()
-    );
+function mapSupabaseOrder(row: Record<string, any>): OrderRow {
+  let itemsStr = "";
+  if (typeof row.items === "string") {
+    itemsStr = row.items;
+  } else if (Array.isArray(row.items)) {
+    itemsStr = row.items.map((it: any) => `${it.name || "Item"} x${it.quantity || 1}`).join(", ");
   }
 
-  if (staleKeys.clientForm && clientFormUrl) {
-    tasks.push(
-      (async () => {
-        try {
-          const freshData = await fetchGas(clientFormUrl);
-          const freshRows: LeadRow[] = Array.isArray(freshData?.rows)
-            ? freshData.rows.map((r: any) => {
-                const s = sanitizeLeadRow(r);
-                return {
-                  ...s,
-                  name: extractLeadName(s) || s.name || "",
-                  timestamp: extractLeadTimestamp(s) || s.timestamp || "",
-                  leadSource: "client_form" as const,
-                };
-              })
-            : [];
-
-          const freshDataClean = {
-            success: true,
-            rows: freshRows,
-            total: freshRows.length,
-          };
-
-          await Promise.all([
-            setCachedData("client_form_v10", freshDataClean, "background-swr"),
-            setCachedData("client_form", freshDataClean, "background-swr"),
-          ]);
-        } catch (e) {
-          console.warn("[swr-bg] ClientForm refresh failed:", e);
-        }
-      })()
-    );
-  }
-
-  if (staleKeys.subscriptions && subsUrl) {
-    tasks.push(
-      (async () => {
-        try {
-          const d = await fetchGas(subsUrl);
-          await Promise.all([
-            setCachedData("subscriptions_v10", d, "background-swr"),
-            setCachedData("subscriptions", d, "background-swr"),
-          ]);
-        } catch (e) {
-          console.warn("[swr-bg] Subscriptions refresh failed:", e);
-        }
-      })()
-    );
-  }
-
-  if (staleKeys.orders && ordersUrl) {
-    tasks.push(
-      (async () => {
-        try {
-          const d = await fetchGas(ordersUrl);
-          const normalized = normalizeOrders(d);
-          await Promise.all([
-            setCachedData("orders_v10", normalized, "background-swr"),
-            setCachedData("orders", normalized, "background-swr"),
-          ]);
-        } catch (e) {
-          console.warn("[swr-bg] Orders refresh failed:", e);
-        }
-      })()
-    );
-  }
-
-  await Promise.allSettled(tasks);
+  return {
+    timestamp: row.created_at,
+    orderId: row.order_id,
+    customerName: row.customer_name || "",
+    customerEmail: row.customer_email || "",
+    customerPhone: row.customer_phone || "",
+    deliveryFullName: row.delivery_full_name || "",
+    deliveryPhone: row.delivery_phone || "",
+    deliveryAddress: row.delivery_address || "",
+    deliveryCity: row.delivery_city || "",
+    deliveryState: row.delivery_state || "",
+    deliveryPinCode: row.delivery_pin_code || "",
+    items: itemsStr,
+    itemCount: row.item_count ?? 0,
+    subtotal: row.subtotal ?? 0,
+    itemGST: row.item_gst ?? 0,
+    deliveryBase: row.delivery_base ?? 0,
+    deliveryGST: row.delivery_gst ?? 0,
+    grandTotal: row.grand_total ?? 0,
+    paymentStatus: row.payment_status || "success",
+    paymentId: row.payment_id || "",
+    paymentMethod: row.payment_method || "",
+    paymentTimestamp: row.payment_timestamp || row.created_at,
+  };
 }
 
 export async function GET(req: NextRequest) {
-  // ── 1. Auth check ─────────────────────────────────────────────────────────
   const authStatus = await authorizeCrmStaff(req);
   if (!authStatus.authorized) {
     return NextResponse.json(
@@ -192,100 +111,74 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { searchParams } = new URL(req.url);
-  const forceRefresh = searchParams.get("refresh") === "true";
-
-  // ── 2. Read all Firestore cache entries in parallel (<50ms) ───────────────
-  const [cachedLeads, cachedClientForm, cachedSubs, cachedOrders] =
-    await Promise.all([
-      getCachedData("leads_v10"),
-      getCachedData("client_form_v10"),
-      getCachedData("subscriptions_v10"),
-      getCachedData("orders_v10"),
+  try {
+    // Execute all 4 queries in parallel in Supabase PostgreSQL
+    const [leadsRes, clientFormRes, subsRes, ordersRes] = await Promise.all([
+      supabaseAdmin
+        .from("leads")
+        .select("*")
+        .eq("lead_source", "website")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("leads")
+        .select("*")
+        .eq("lead_source", "client_form")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("subscriptions")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false }),
     ]);
 
-  const leadsData = cachedLeads?.data as { rows?: unknown[] } | undefined;
-  const clientFormData = cachedClientForm?.data as { rows?: unknown[] } | undefined;
+    const websiteRows: LeadRow[] = (leadsRes.data || []).map((r) => mapSupabaseLead(r, "website"));
+    const clientRows: LeadRow[] = (clientFormRes.data || []).map((r) => mapSupabaseLead(r, "client_form"));
+    const subRows: SubscriptionRow[] = (subsRes.data || []).map(mapSupabaseSubscription);
+    const ordRows: OrderRow[] = (ordersRes.data || []).map(mapSupabaseOrder);
 
-  const hasLeads = Array.isArray(leadsData?.rows) && leadsData.rows.length > 0;
-  const hasClientForm = Array.isArray(clientFormData?.rows) && clientFormData.rows.length > 0;
-
-  const leadsFresh = !forceRefresh && hasLeads && isCacheFresh(cachedLeads?.cachedAt, GAS_CACHE_TTL_MS);
-  const clientFormFresh = !forceRefresh && hasClientForm && isCacheFresh(cachedClientForm?.cachedAt, GAS_CACHE_TTL_MS);
-  const subsFresh = !forceRefresh && isCacheFresh(cachedSubs?.cachedAt, GAS_CACHE_TTL_MS);
-  const ordersFresh = !forceRefresh && isCacheFresh(cachedOrders?.cachedAt, GAS_CACHE_TTL_MS);
-
-  const staleKeys = {
-    leads: !leadsFresh,
-    clientForm: !clientFormFresh,
-    subscriptions: !subsFresh,
-    orders: !ordersFresh,
-  };
-
-  // If ALL slices are fresh, return IMMEDIATELY (<30ms response time!)
-  if (!forceRefresh && leadsFresh && clientFormFresh && subsFresh && ordersFresh) {
     return NextResponse.json(
       {
         success: true,
-        leads: cachedLeads!.data,
-        clientForm: cachedClientForm?.data ?? { success: true, rows: [], total: 0 },
-        subscriptions: cachedSubs?.data ?? { success: true, rows: [], total: 0 },
-        orders: cachedOrders?.data ?? { success: true, rows: [], total: 0 },
+        leads: {
+          success: !leadsRes.error,
+          rows: websiteRows,
+          total: websiteRows.length,
+        },
+        clientForm: {
+          success: !clientFormRes.error,
+          rows: clientRows,
+          total: clientRows.length,
+        },
+        subscriptions: {
+          success: !subsRes.error,
+          rows: subRows,
+          total: subRows.length,
+        },
+        orders: {
+          success: !ordersRes.error,
+          rows: ordRows,
+          total: ordRows.length,
+        },
         meta: {
-          cachedAt: cachedLeads!.cachedAt,
-          source: "firestore-cache-hit",
+          cachedAt: new Date().toISOString(),
+          source: "supabase",
         },
       },
       {
         headers: {
-          "X-Cache": "HIT",
-          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          "X-Database": "Supabase",
+          "Cache-Control": "private, max-age=0, must-revalidate",
         },
       }
     );
+  } catch (error: any) {
+    console.error("[dashboard API] Supabase error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to load dashboard data" },
+      { status: 500 }
+    );
   }
-
-  // Synchronously fetch fresh Google Sheets data when stale or on forceRefresh
-  await backgroundRefreshGasData(staleKeys);
-
-  const [freshLeads, freshClientForm, freshSubs, freshOrders] =
-    await Promise.all([
-      getCachedData("leads_v10"),
-      getCachedData("client_form_v10"),
-      getCachedData("subscriptions_v10"),
-      getCachedData("orders_v10"),
-    ]);
-
-  const freshLeadsData = freshLeads?.data as { rows?: unknown[] } | undefined;
-  const freshClientFormData = freshClientForm?.data as { rows?: unknown[] } | undefined;
-
-  const finalLeads =
-    Array.isArray(freshLeadsData?.rows) && freshLeadsData.rows.length > 0
-      ? freshLeads!.data
-      : (cachedLeads?.data ?? { success: true, rows: [], total: 0 });
-
-  const finalClientForm =
-    Array.isArray(freshClientFormData?.rows) && freshClientFormData.rows.length > 0
-      ? freshClientForm!.data
-      : (cachedClientForm?.data ?? { success: true, rows: [], total: 0 });
-
-  return NextResponse.json(
-    {
-      success: true,
-      leads: finalLeads,
-      clientForm: finalClientForm,
-      subscriptions: freshSubs?.data ?? cachedSubs?.data ?? { success: true, rows: [], total: 0 },
-      orders: freshOrders?.data ?? cachedOrders?.data ?? { success: true, rows: [], total: 0 },
-      meta: {
-        cachedAt: new Date().toISOString(),
-        source: "gas-sync",
-      },
-    },
-    {
-      headers: {
-        "X-Cache": "MISS",
-        "Cache-Control": "private, no-store",
-      },
-    }
-  );
 }
