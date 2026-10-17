@@ -225,22 +225,19 @@ export function MasterPipeline() {
   // ── UI state ──────────────────────────────────────────────────────────────
   const [filter, setFilterState] = useState<PipelineStatus | "all">("all");
   const [sortBy, setSortByState] = useState<SortBy>("newest");
-  const [dateMode, setDateModeState] = useState<DateFilter>("all");
+  const [dateMode, setDateModeState] = useState<DateFilter>("today");
   const [sourceFilter, setSourceFilterState] = useState<LeadSourceFilter>("all");
 
-  // Restore filter settings from localStorage on mount so state persists across page reloads / tabs
+  // Restore filter settings from localStorage on mount (dateMode always defaults to "today")
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
         const savedFilter = localStorage.getItem("bhookr_crm_active_status_chip");
         if (savedFilter) setFilterState(savedFilter as PipelineStatus | "all");
 
-        const savedDateMode = localStorage.getItem("bhookr_crm_active_date_mode");
-        if (savedDateMode && savedDateMode !== "today") {
-          setDateModeState(savedDateMode as DateFilter);
-        } else {
-          setDateModeState("all");
-        }
+        // Always reset to today's leads on fresh open or refresh
+        setDateModeState("today");
+        localStorage.removeItem("bhookr_crm_active_date_mode");
 
         const savedSourceFilter = localStorage.getItem("bhookr_crm_active_source_filter");
         if (savedSourceFilter) setSourceFilterState(savedSourceFilter as LeadSourceFilter);
@@ -266,13 +263,6 @@ export function MasterPipeline() {
 
   const setDateMode = useCallback((newMode: DateFilter) => {
     setDateModeState(newMode);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("bhookr_crm_active_date_mode", newMode);
-      } catch {
-        // ignore
-      }
-    }
   }, []);
 
   const setSourceFilter = useCallback((newSource: LeadSourceFilter) => {
