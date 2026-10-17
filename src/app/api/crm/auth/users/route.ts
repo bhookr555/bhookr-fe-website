@@ -15,7 +15,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: authStatus.error || "Forbidden" }, { status: 403 });
   }
 
-  // Bypass if Firebase is not initialized
+  // Query Supabase crm_users table directly
+  try {
+    const { supabaseAdmin } = await import("@/lib/supabase/server");
+    const { data: supaUsers, error: supaErr } = await supabaseAdmin
+      .from("crm_users")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
+      const users = supaUsers
+        .filter((u) => ["admin", "auditor", "manager", "telecaller"].includes(u.role))
+        .map((u) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name || "",
+          role: u.role,
+          createdAt: u.created_at,
+          lastLogin: u.last_login,
+        }));
+      return NextResponse.json({ success: true, users, source: "supabase" });
+    }
+  } catch (sbErr) {
+    logger.warn("Supabase crm_users fetch failed, trying Firebase fallback:", sbErr as Error);
+  }
+
+  // Fallback to Firebase
   if (!adminAuth || !adminDb) {
     return NextResponse.json({
       success: true,
@@ -33,7 +58,6 @@ export async function GET(req: NextRequest) {
     const users = snapshot.docs
       .map((doc) => {
         const data = doc.data();
-        // Only return users who have CRM roles
         return {
           id: doc.id,
           email: data.email || "",

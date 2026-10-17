@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setCachedData, getCachedData } from "@/lib/crm/cache";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+function parseNumber(val: any): number | null {
+  if (val === undefined || val === null || val === "") return null;
+  const num = parseFloat(String(val).replace(/[^0-9.-]/g, ""));
+  return isNaN(num) ? null : num;
+}
+
+function parseDateSafe(val: any): string | null {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : (d.toISOString().split("T")[0] ?? null);
+}
+
 /**
- * Server-Side Relay Endpoint for Website Lead Submissions to Google Sheets
- *
- * WHY THIS IS 100% RELIABLE:
- * Direct browser `fetch` to Google Apps Script (`script.google.com`) is frequently
- * blocked by adblockers (uBlock, Brave, Safari ITP) and browser CORS restrictions.
- *
- * This server route executes a server-to-server POST from Next.js to Google Sheets,
- * using `redirect: "manual"` so Google Apps Script executes `doPost(e)` cleanly.
+ * Server-Side Endpoint for Lead Submissions
+ * Saves lead directly to Supabase PostgreSQL table (fast, reliable, resilient).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -20,116 +26,79 @@ export async function POST(req: NextRequest) {
 
     if (!email && !phoneNumber && !name) {
       return NextResponse.json(
-        { success: false, error: "Missing required lead fields" },
+        { success: false, error: "Missing required lead fields (email, phone, or name)" },
         { status: 400 }
       );
     }
 
-    // SHEET2 URL is the canonical target. The env var is checked but Sheet2 is always preferred.
-    const SHEET2_URL = "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
-    const leadsSheetUrl = SHEET2_URL;
-    let sheetSuccess = false;
+    const cleanEmail = email
+      ? String(email).trim().toLowerCase()
+      : phoneNumber
+      ? `phone_${String(phoneNumber).replace(/\D/g, "")}@bhookr.lead`
+      : `lead_${Date.now()}@bhookr.lead`;
 
-    // 1. Server-to-server POST to Google Sheets Apps Script (using manual redirect)
-    if (leadsSheetUrl) {
-      try {
-        const preparedData = {
-          ...body,
-          timestamp: body.timestamp || new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-          status: body.status || "lead",
-        };
+    const leadSource = body.leadSource || "website";
+    const planVal = Array.isArray(body.plan) ? body.plan.join(", ") : (body.plan || null);
 
-        // Try redirect: "manual" first to prevent fetch from turning POST into GET on 302
-        const sheetRes = await fetch(leadsSheetUrl, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(preparedData),
-          redirect: "manual",
-          signal: AbortSignal.timeout(10000),
-        });
+    const leadRecord = {
+      name: String(name || "Website Lead").trim(),
+      email: cleanEmail,
+      phone_number: body.phoneNumber ? String(body.phoneNumber).trim() : null,
+      age: parseNumber(body.age),
+      gender: body.gender || null,
+      height: parseNumber(body.height),
+      weight: parseNumber(body.weight),
+      goal: body.goal || null,
+      diet: body.diet || null,
+      food_preference: body.foodPreference || null,
+      physical_state: body.physicalState || null,
+      food_love: body.foodLove || null,
+      subscription_type: body.subscriptionType || null,
+      plan: planVal,
+      subscription_start_date: parseDateSafe(body.subscriptionStartDate),
+      status: body.status || "lead",
+      last_step_completed: parseNumber(body.lastStepCompleted) || 7,
+      checkout_visited: Boolean(body.checkoutVisited),
+      utm_source: body.utmSource || null,
+      utm_sub_source: body.utmSubSource || null,
+      lead_source: leadSource,
+      created_at: new Date().toISOString(),
+    };
 
-        // 302, 200, 201, opaque are all success indicators for Google Apps Script Web Apps
-        sheetSuccess = sheetRes.status === 302 || sheetRes.status === 200 || sheetRes.status === 201 || sheetRes.type === "opaque" || sheetRes.ok;
+    // Upsert into Supabase (email + lead_source unique constraint)
+    const { data, error } = await supabaseAdmin
+      .from("leads")
+      .upsert(leadRecord, { onConflict: "email,lead_source" })
+      .select()
+      .single();
 
-        // Fallback: If 302 wasn't returned, try follow mode
-        if (!sheetSuccess) {
-          const fallbackRes = await fetch(leadsSheetUrl, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(preparedData),
-            redirect: "follow",
-            signal: AbortSignal.timeout(10000),
-          });
-          sheetSuccess = fallbackRes.ok || fallbackRes.status === 200 || fallbackRes.status === 302;
-        }
-
-        console.log(`✅ Server-to-server lead posted to Google Sheets. SheetSuccess: ${sheetSuccess}`);
-      } catch (sheetErr) {
-        console.warn("⚠️ Server-to-server Google Sheet post error:", sheetErr);
-      }
-    } else {
-      console.warn("⚠️ NEXT_PUBLIC_LEADS_SHEET_URL is missing in environment variables!");
+    if (error) {
+      console.error("[leads/submit] Supabase lead save error:", error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    // 2. Update Firestore cache so CRM dashboard reflects the lead immediately
-    try {
-      const cached = await getCachedData<any>("leads_v7");
-      const existingRows = Array.isArray(cached?.data?.rows) ? cached.data.rows : [];
-      const newRow = {
-        ...body,
-        timestamp: body.timestamp || new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-        status: body.status || "lead",
-        leadSource: "website",
-      };
-
-      // Check if lead already exists in cache to update or prepend
-      const cleanPhone = String(body.phoneNumber || "").replace(/\D/g, "");
-      const cleanEmail = String(body.email || "").trim().toLowerCase();
-
-      let foundIndex = -1;
-      for (let i = 0; i < existingRows.length; i++) {
-        const row = existingRows[i];
-        const rPhone = String(row.phoneNumber || "").replace(/\D/g, "");
-        const rEmail = String(row.email || "").trim().toLowerCase();
-
-        if ((cleanPhone && rPhone && rPhone.slice(-10) === cleanPhone.slice(-10)) || (cleanEmail && rEmail === cleanEmail)) {
-          foundIndex = i;
-          break;
-        }
-      }
-
-      let updatedRows = [...existingRows];
-      if (foundIndex >= 0) {
-        updatedRows[foundIndex] = { ...existingRows[foundIndex], ...newRow };
-      } else {
-        updatedRows = [newRow, ...existingRows];
-      }
-
-      const freshPayload = {
-        ...cached?.data,
-        success: true,
-        rows: updatedRows,
-        total: updatedRows.length,
-      };
-
-      await Promise.all([
-        setCachedData("leads_v10", freshPayload, "submit-relay"),
-        setCachedData("leads_v7", freshPayload, "submit-relay"),
-        setCachedData("leads", freshPayload, "submit-relay"),
-      ]);
-    } catch (cacheErr) {
-      console.warn("⚠️ Cache prepend error:", cacheErr);
+    // Optional background sync to Google Sheet (non-blocking)
+    const leadsSheetUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
+    if (leadsSheetUrl) {
+      fetch(leadsSheetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ ...body, email: cleanEmail }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+      }).catch((e) => console.warn("[leads/submit] Optional Google sheet forward notice:", e.message));
     }
 
     return NextResponse.json({
       success: true,
-      message: "Lead captured successfully",
-      sheetBackup: sheetSuccess,
+      message: "Lead recorded successfully in Supabase",
+      leadId: data?.id,
+      email: cleanEmail,
     });
-  } catch (err) {
-    console.error("[leads/submit] Server submission error:", err);
+  } catch (error: any) {
+    console.error("[leads/submit] Unexpected error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to process lead submission" },
+      { success: false, error: error.message || "Failed to submit lead" },
       { status: 500 }
     );
   }
