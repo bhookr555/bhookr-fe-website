@@ -192,6 +192,14 @@ function renderAdSourceBadge(lead: LeadRow) {
     );
   }
 
+  if ((lead as any).identityConflict) {
+    return (
+      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700">
+        ⚠️ Identity Conflict (Review)
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex w-fit items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
       🌐 Website Lead

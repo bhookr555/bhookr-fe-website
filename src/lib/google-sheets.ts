@@ -96,23 +96,31 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
     // Always use Sheet2 URL directly - bypasses any stale Vercel env var
     const leadsSheetUrl = "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
 
-    // Single submission via server relay only (prevents duplicate Sheet2 writes)
-    await fetch('/api/crm/leads/submit', {
+    // Single submission via server relay to Supabase PostgreSQL (canonical source of truth)
+    const res = await fetch('/api/crm/leads/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(preparedData),
-    }).catch((err) => console.warn('Server relay warning:', err));
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody?.error || `Lead submit failed with status ${res.status}`);
+    }
+
+    const resData = await res.json().catch(() => ({}));
 
     return {
       success: true,
-      message: 'Lead submitted successfully',
+      message: resData?.message || 'Lead submitted successfully',
       email: preparedData.email,
     };
-  } catch (error) {
-    console.error('Error submitting lead to Google Sheets:', error);
+  } catch (error: any) {
+    console.error('Error submitting lead:', error);
     return {
-      success: true,
-      message: 'Lead submission handled',
+      success: false,
+      message: error?.message || 'Lead submission failed',
+      error: error?.message || 'Lead submission failed',
       email: data.email,
     };
   }

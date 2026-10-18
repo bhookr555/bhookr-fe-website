@@ -1,0 +1,922 @@
+[
+  {
+    "status": "MERGED",
+    "canonicalId": "9fcc362e-b8b0-435e-9a12-fe093b384e56",
+    "duplicateIds": [
+      "406ef2a2-0114-4c50-a9f5-04a92f93a73b"
+    ],
+    "phone": "7995880134",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "7db15f03-54e9-4ff7-8f38-504096c4155c",
+    "duplicateIds": [
+      "7f13d2d9-9758-4492-a69d-4ba4754cc9f8"
+    ],
+    "phone": "8978984090",
+    "preservedFields": {}
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9391692571",
+    "emails": [
+      "shilpaallam@gmail.com",
+      "i.reddy1018@gmail.com"
+    ],
+    "leadIds": [
+      "fcd48473-7b7f-4821-a02c-5984d1733cc9",
+      "926e9f14-8fc9-4491-ac9f-f656837bda25"
+    ]
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9949705666",
+    "emails": [
+      "sowthanya@gmail.com",
+      "sahasrakaramsetty7@gmail.com"
+    ],
+    "leadIds": [
+      "d6dd9633-0e96-4738-8931-e3f042203b96",
+      "0794aa2f-08ce-41ee-aa14-9f915e838326"
+    ]
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "9f78460d-e824-4823-bf68-4d2c1c14b436",
+    "duplicateIds": [
+      "992b355c-a210-4353-9908-c605fe77d984"
+    ],
+    "phone": "9456189189",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "20078f27-348c-4742-8d41-4b5c3cae70b5",
+    "duplicateIds": [
+      "ea7e9d57-4d99-421d-93f4-fff9a59b069c"
+    ],
+    "phone": "9866012260",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "455a8899-e237-435d-bceb-fb2e05ae8f08",
+    "duplicateIds": [
+      "f42359a7-8a21-41ca-866f-8d171ee750b9"
+    ],
+    "phone": "7702451010",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "eb0dd166-0535-48a9-bc8d-d4ef94a11962",
+    "duplicateIds": [
+      "ce07eaae-2cd6-40cf-9a5e-09f28a3a09ea"
+    ],
+    "phone": "8096718504",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "44cc1678-3e83-44db-84b0-264682edf4e0",
+    "duplicateIds": [
+      "7567b08c-982c-4e28-bb37-562c8e8991a9"
+    ],
+    "phone": "7306256867",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "379c85e5-1b7c-4752-9bc1-4615e87b4fa4",
+    "duplicateIds": [
+      "33b396fb-e280-41ca-a4a3-7bf179296b40"
+    ],
+    "phone": "9959481683",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "1953b1ab-3b5b-4704-9d47-253f4c47cada",
+    "duplicateIds": [
+      "642c1141-2cc2-4f4c-981b-9dc88e5cb209"
+    ],
+    "phone": "9985804455",
+    "preservedFields": {}
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9100418180",
+    "emails": [
+      "gayathridhatrika1508@gmail.com",
+      "gayathridatrika150898@gmail.com",
+      "gayathridhatrika150898@gnail.com"
+    ],
+    "leadIds": [
+      "bf2b6fdb-07e6-4e6b-a942-7bc77ff131c3",
+      "100b8860-cb56-47ae-82a8-8e24b9e36041",
+      "1490cb78-ae35-4076-b057-2cf1a3fdc8e8"
+    ]
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "e2f601f0-f0e9-4816-b517-977836efe3ac",
+    "duplicateIds": [
+      "44d7f33e-0442-4024-abed-1d4efaceb8b2"
+    ],
+    "phone": "9676825871",
+    "preservedFields": {
+      "weight": 79
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "98cb256d-1d66-4af5-83a1-9a1a2e2ffcfe",
+    "duplicateIds": [
+      "d710cbe7-19b6-47cf-96e5-5982695bd7d7"
+    ],
+    "phone": "9154360480",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "55b8a0e9-0988-4783-8c7f-21e545ae0b89",
+    "duplicateIds": [
+      "bb776013-94a3-4ffd-9033-bccdbbfbd690"
+    ],
+    "phone": "8978815612",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "e4c4dcea-e8aa-4d91-90ca-504e8af533cf",
+    "duplicateIds": [
+      "e7803f0c-a116-43ba-b8d6-e6166fc58b21"
+    ],
+    "phone": "7799546861",
+    "preservedFields": {
+      "height": 150,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Breakfast, Lunch, Dinner",
+      "subscription_start_date": "2026-10-10"
+    }
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9177736244",
+    "emails": [
+      "madhumitameka01@gmail.com",
+      "seshumeka@gmail.com"
+    ],
+    "leadIds": [
+      "61af9a11-c405-4fe3-8eba-6e173ba8ee8b",
+      "5925ed97-1157-4d63-9895-9dfa73e0fecb"
+    ]
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9100076914",
+    "emails": [
+      "workernoww123@gmail.com",
+      "andkarb77@gmail.com",
+      "chandran.prashanth86@gmail.com",
+      "prashanth.c01@gmail.com"
+    ],
+    "leadIds": [
+      "b0570036-e479-4276-b1e8-74c2f0db724c",
+      "01329f3d-f6a6-445a-b982-2b11415d009c",
+      "c37e5fb6-1eea-4287-b741-c689e39fdcb9",
+      "31938bde-0eb4-4a9d-96a7-d7d407e9eed2"
+    ]
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "abeead25-6dc9-4ba3-8686-170f14e8e8c6",
+    "duplicateIds": [
+      "51074bc8-0899-49b9-b14a-a3301bf843ea"
+    ],
+    "phone": "8008819696",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "5cfabd25-7fb7-4af6-92b6-47d24fec0e8c",
+    "duplicateIds": [
+      "4b7b8203-cdb7-4c9d-81a7-dea0e67dde4e"
+    ],
+    "phone": "8801542646",
+    "preservedFields": {}
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "0e567de5-11b4-43af-a886-1a452cbe8a70",
+    "duplicateIds": [
+      "cd582811-ee74-4ca6-89d2-9057f4351f41"
+    ],
+    "phone": "7989525449",
+    "preservedFields": {
+      "height": 164,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "others",
+      "plan": "Breakfast, Lunch",
+      "subscription_start_date": "2026-08-30"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "67a17c60-0f33-42f3-8bea-a3bd8cd3ed8e",
+    "duplicateIds": [
+      "26af63e0-f73e-44dc-b4df-0943c4aa4b8f",
+      "28727c24-d0c2-41a3-87ef-5b1785ed3e41"
+    ],
+    "phone": "7893889668",
+    "preservedFields": {
+      "height": 160,
+      "goal": "balanced_diet",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-10-17"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "2a10a660-6f5a-4578-a8fb-5e94105bb400",
+    "duplicateIds": [
+      "4e1f9350-d091-48ae-b60f-d736e6c6d787"
+    ],
+    "phone": "9032474399",
+    "preservedFields": {
+      "height": 151,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "sedentary",
+      "plan": "Lunch, Breakfast",
+      "subscription_start_date": "2026-09-28"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "3e2facde-2da6-4434-8a48-a1f05433b066",
+    "duplicateIds": [
+      "ec90d9f1-d113-4ba2-a963-6909502e0fc6"
+    ],
+    "phone": "9177699988",
+    "preservedFields": {
+      "height": 154,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "active",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-05"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "fd39bd67-5c6b-485b-a0d8-6c8e3ebc820a",
+    "duplicateIds": [
+      "3b8158c0-400b-4d2e-b0c7-4d9f2a277076"
+    ],
+    "phone": "9553952016",
+    "preservedFields": {
+      "height": 170,
+      "goal": "balanced_diet",
+      "diet": "muscle_gain",
+      "physical_state": "active",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-11"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "bd16ab8f-effc-4366-a2f1-944b3570bf97",
+    "duplicateIds": [
+      "0cecb3c6-f13d-4c8e-ac2c-0d6a6609916a"
+    ],
+    "phone": "7995789180",
+    "preservedFields": {
+      "height": 170,
+      "goal": "gain_muscle",
+      "diet": "muscle_gain",
+      "physical_state": "others",
+      "plan": "Lunch, Dinner, Breakfast",
+      "subscription_start_date": "2026-08-22"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "c479725e-87ac-4715-ba86-26b1655668b6",
+    "duplicateIds": [
+      "f047fac7-cdd3-47a5-8790-48dcc11750eb"
+    ],
+    "phone": "9030666528",
+    "preservedFields": {
+      "height": 170,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "others",
+      "plan": "Breakfast, Lunch, Dinner",
+      "subscription_start_date": "2026-08-16"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "3b9ba631-0b70-465e-ab78-0c5fd538292e",
+    "duplicateIds": [
+      "2050a6e8-d7cb-44be-a121-b837664ed59d"
+    ],
+    "phone": "9908820309",
+    "preservedFields": {
+      "height": 173,
+      "goal": "weight_loss",
+      "diet": "balanced_meal",
+      "physical_state": "active",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-08-16",
+      "utm_source": "ig",
+      "utm_sub_source": "link_in_bio"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "9a39e65e-61bc-4933-b703-bb8ddfcc4e9d",
+    "duplicateIds": [
+      "20d6d81b-9354-4b20-8c9b-2779b6ee60b4"
+    ],
+    "phone": "7989871107",
+    "preservedFields": {
+      "height": 158,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-10-21"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "37e0f095-2b87-424a-953c-869d9cf00121",
+    "duplicateIds": [
+      "aec35c8f-a807-41dd-9082-ab04d9b55fb2"
+    ],
+    "phone": "9959986429",
+    "preservedFields": {
+      "height": 178,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "moderately",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-08-19"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "b7f8b7bb-c473-4bd6-b3b6-50644fc2a1aa",
+    "duplicateIds": [
+      "e3cf21cc-6d1c-4790-9506-a0f62616e334"
+    ],
+    "phone": "9505736490",
+    "preservedFields": {
+      "height": 168,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "moderately",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-08-22",
+      "utm_source": "chatgpt.com"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "6592f533-77ee-41f0-b33f-7f06161a5850",
+    "duplicateIds": [
+      "45e8155f-c468-4a41-89cb-ca6481e3a040"
+    ],
+    "phone": "9154787788",
+    "preservedFields": {
+      "height": 172,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-08-25"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "075ad221-aad0-476e-ab1f-26ec0c7bca5b",
+    "duplicateIds": [
+      "cfdc7623-588a-4c42-b562-9c1271dd097f"
+    ],
+    "phone": "9962914564",
+    "preservedFields": {
+      "height": 164,
+      "goal": "weight_loss",
+      "diet": "balanced_meal",
+      "physical_state": "active",
+      "plan": "Breakfast, Dinner",
+      "subscription_start_date": "2026-09-13"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "f253cf8d-6e70-4087-88ca-9554c661acc7",
+    "duplicateIds": [
+      "f0ddc9d2-2514-4693-a7e9-bc522b4f1aab"
+    ],
+    "phone": "6300903435",
+    "preservedFields": {
+      "height": 174,
+      "goal": "weight_loss",
+      "diet": "muscle_gain",
+      "physical_state": "others",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-05"
+    }
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9000963888",
+    "emails": [
+      "kavithakiran.638@gmail.com",
+      "kothakavithakiran@gmail.com"
+    ],
+    "leadIds": [
+      "b80d885c-4fe0-4850-8016-b89031bc7041",
+      "789bac59-1d60-4229-ae2c-adffc6627456"
+    ]
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "1d32f1af-89dd-4fb4-893d-0228a9eeaf30",
+    "duplicateIds": [
+      "95f69b8a-1e0c-4a39-94e6-e163087eadaf"
+    ],
+    "phone": "9834534324",
+    "preservedFields": {
+      "height": 172,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Breakfast, Lunch, Dinner",
+      "subscription_start_date": "2026-09-07",
+      "utm_source": "Meta"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "06319582-5193-44a6-afc5-82ff3dc576d1",
+    "duplicateIds": [
+      "fca64720-a6a2-42eb-95e0-e02474855193"
+    ],
+    "phone": "9100557317",
+    "preservedFields": {
+      "height": 178,
+      "goal": "gain_muscle",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-12",
+      "utm_source": "ig",
+      "utm_sub_source": "link_in_bio"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "66c5337b-cfb8-4b49-9fb5-95e4166240ab",
+    "duplicateIds": [
+      "a7407870-deb7-4830-8d84-5cf91f03372c"
+    ],
+    "phone": "9849015115",
+    "preservedFields": {
+      "height": 180,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "moderately",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-09-11",
+      "utm_source": "ig",
+      "utm_sub_source": "link_in_bio"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "870daf80-c12d-493e-8258-8004fbe940f6",
+    "duplicateIds": [
+      "ed06fdc8-d29f-44a2-8cc5-0c481aac3cc1"
+    ],
+    "phone": "9966430887",
+    "preservedFields": {
+      "height": 171,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-10-05"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "7be92293-164d-4b6f-8ee9-9c0437861111",
+    "duplicateIds": [
+      "d398beea-4822-4f61-b66c-ab83d17fad09"
+    ],
+    "phone": "8058508078",
+    "preservedFields": {
+      "height": 173,
+      "goal": "balanced_diet",
+      "diet": "low_carb_high_protein",
+      "physical_state": "moderately",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-09-13"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "c6da6d8e-44a1-4455-9009-f64108fc2842",
+    "duplicateIds": [
+      "a77c51a5-63b4-4a0d-ad81-0170bb652041"
+    ],
+    "phone": "7888840916",
+    "preservedFields": {
+      "height": 167,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-09-19"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "ce2fbcd2-cfc6-4622-939a-843a80ddd621",
+    "duplicateIds": [
+      "5bbf2310-d55b-452c-8982-6becbdd5cb67"
+    ],
+    "phone": "9381962842",
+    "preservedFields": {
+      "height": 170,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-09-22",
+      "utm_source": "ig",
+      "utm_sub_source": "link_in_bio"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "8df950ad-c5d8-49d8-bbc9-c4812e2352a2",
+    "duplicateIds": [
+      "26df0890-1ce4-48d4-afe8-867b65d54740"
+    ],
+    "phone": "8129062279",
+    "preservedFields": {
+      "height": 164,
+      "weight": 107,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "sedentary",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-20"
+    }
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "8555810434",
+    "emails": [
+      "keerthanabyri@gmail.com",
+      "kateparkavenue@gmail.com"
+    ],
+    "leadIds": [
+      "38d96c35-350f-4c2a-9bbe-385719485361",
+      "f2d638fa-6974-4551-86ac-4e2e666da385"
+    ]
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "42152b09-863b-45d3-bd85-67957f89c022",
+    "duplicateIds": [
+      "40818f3c-c4a2-476d-9edc-85acd8fdde5b"
+    ],
+    "phone": "9498030011",
+    "preservedFields": {
+      "height": 172,
+      "goal": "weight_loss",
+      "diet": "balanced_meal",
+      "physical_state": "sedentary",
+      "plan": "Dinner, Breakfast",
+      "subscription_start_date": "2026-09-21"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "d0bcd359-5154-43b8-8344-8e590a92ca02",
+    "duplicateIds": [
+      "e86d36df-efee-4bd5-be32-6ab8227d332f"
+    ],
+    "phone": "8178343296",
+    "preservedFields": {
+      "height": 177,
+      "goal": "weight_loss",
+      "diet": "balanced_meal",
+      "physical_state": "active",
+      "plan": "Breakfast, Lunch",
+      "subscription_start_date": "2026-09-22"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "40d0c1b4-80b8-4d37-bbfa-4275b4025866",
+    "duplicateIds": [
+      "c32a3b0b-1c77-460c-b6d5-e81541cd559e"
+    ],
+    "phone": "7658975399",
+    "preservedFields": {
+      "height": 175,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-26"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "bdb4b82e-5d0f-4bc9-ad6c-8f69ae8d5bfe",
+    "duplicateIds": [
+      "1b3878bd-e2d3-4dfe-bafe-689b6db2c2bb"
+    ],
+    "phone": "8179713594",
+    "preservedFields": {
+      "height": 171,
+      "goal": "gain_muscle",
+      "diet": "balanced_meal",
+      "physical_state": "moderately",
+      "plan": "Breakfast",
+      "subscription_start_date": "2026-09-30"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "3d0c091b-c95a-43cd-8524-d63bdb27af9e",
+    "duplicateIds": [
+      "2acf84b8-9176-4ac1-9342-4e7cf28382b1"
+    ],
+    "phone": "7042727144",
+    "preservedFields": {
+      "height": 185,
+      "goal": "gain_muscle",
+      "diet": "muscle_gain",
+      "physical_state": "active",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-09-25"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "ae85a633-9fa5-45ed-a534-7503558806a4",
+    "duplicateIds": [
+      "3f984d3f-e677-4f90-95a0-bdacf3146315"
+    ],
+    "phone": "9030033823",
+    "preservedFields": {
+      "height": 178,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "moderately",
+      "plan": "Breakfast, Lunch, Dinner",
+      "subscription_start_date": "2026-09-26"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "6fa553a0-27fe-4ad2-9d24-6163f5373123",
+    "duplicateIds": [
+      "4eac9dd0-4bc1-484c-9f6d-eba2be7ddbde"
+    ],
+    "phone": "8341029339",
+    "preservedFields": {
+      "height": 170,
+      "weight": 74,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "sedentary",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-10-06"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "94e5b95d-36c8-4fcc-9dbe-03176f65edd4",
+    "duplicateIds": [
+      "5425baf3-b2ed-4025-8b65-b8f6541f16d5"
+    ],
+    "phone": "9010224391",
+    "preservedFields": {
+      "height": 150,
+      "goal": "weight_loss",
+      "diet": "balanced_meal",
+      "physical_state": "sedentary",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-10-04"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "f79081f8-2370-4220-bf7a-9035c71f7e79",
+    "duplicateIds": [
+      "00cbe8be-7854-413e-abab-9f839cb4d3f5"
+    ],
+    "phone": "8978783535",
+    "preservedFields": {
+      "height": 177,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "moderately",
+      "plan": "Dinner",
+      "subscription_start_date": "2026-09-28"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "d5b02b6c-1070-40a0-96b0-77360d6c51d1",
+    "duplicateIds": [
+      "906c4a99-7480-4638-a523-7063f3780818"
+    ],
+    "phone": "8008018112",
+    "preservedFields": {
+      "height": 170,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Lunch, Dinner, Breakfast",
+      "subscription_start_date": "2026-09-29"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "33cec441-dec8-429c-a17e-fc50ea8719ee",
+    "duplicateIds": [
+      "465fdba5-56c3-47f3-9e82-94b1576e9910"
+    ],
+    "phone": "9963373763",
+    "preservedFields": {
+      "height": 160,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "moderately",
+      "plan": "Breakfast, Lunch, Dinner",
+      "subscription_start_date": "2026-10-07"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "23149998-2d60-4af5-af57-b063f7fefc56",
+    "duplicateIds": [
+      "66d55cc5-3502-474b-bf1e-d51fc58c51f4"
+    ],
+    "phone": "9700268717",
+    "preservedFields": {
+      "height": 164,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Breakfast, Lunch, Dinner",
+      "subscription_start_date": "2026-10-03"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "82a7f096-57e6-466c-93b9-879c848b8e77",
+    "duplicateIds": [
+      "f0b497c6-6805-4dea-b960-4a78d4a65925"
+    ],
+    "phone": "9666008333",
+    "preservedFields": {
+      "height": 170,
+      "goal": "gain_muscle",
+      "diet": "muscle_gain",
+      "physical_state": "active",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-10-02"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "0aa32e85-04a3-4829-b5cb-13083c42ebab",
+    "duplicateIds": [
+      "bd3f0ac9-b5bd-4900-bed4-2021dd147f87"
+    ],
+    "phone": "8777481647",
+    "preservedFields": {
+      "height": 158,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "sedentary",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-10-05"
+    }
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "9494640407",
+    "emails": [
+      "vangasaitarunreddy@gmail.com",
+      "saitarunreddyvanga@gmail.com"
+    ],
+    "leadIds": [
+      "29c50a1c-9ecd-4bcf-bca5-96483d31a9b1",
+      "448fe02a-be84-477e-9926-85cffbe13cb9"
+    ]
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "926a2e77-8e56-4771-a2b1-1ae21d4dc731",
+    "duplicateIds": [
+      "5034e1e1-d049-41c2-80a5-0d740c9300ab"
+    ],
+    "phone": "7207807083",
+    "preservedFields": {
+      "height": 165,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-10-09"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "28ab53e2-64cd-4c65-8df5-fd44c513eb2d",
+    "duplicateIds": [
+      "2bc865be-6086-405a-801a-b6be3a569b53"
+    ],
+    "phone": "9515808550",
+    "preservedFields": {
+      "height": 167,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "active",
+      "plan": "Lunch",
+      "subscription_start_date": "2026-10-21"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "7d743646-0838-4b91-a22f-f70bc39e04cd",
+    "duplicateIds": [
+      "037786ac-f980-4870-acaa-b0ed7a39733c"
+    ],
+    "phone": "7386610489",
+    "preservedFields": {
+      "height": 161,
+      "goal": "weight_loss",
+      "diet": "low_carb_high_protein",
+      "physical_state": "moderately",
+      "plan": "Lunch, Dinner",
+      "subscription_start_date": "2026-10-13"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "08b3e6e4-ca95-4b71-86ea-48558e90943f",
+    "duplicateIds": [
+      "ea0db82d-cf9b-413c-8347-1c68cb926aa4"
+    ],
+    "phone": "6261522209",
+    "preservedFields": {
+      "height": 169,
+      "goal": "balanced_diet",
+      "diet": "balanced_meal",
+      "physical_state": "active",
+      "plan": "Dinner, Lunch",
+      "subscription_start_date": "2026-10-14"
+    }
+  },
+  {
+    "status": "MERGED",
+    "canonicalId": "5ecaa425-65a0-4cba-9f72-b98bb03c73ca",
+    "duplicateIds": [
+      "7a1b92ee-306d-42be-adf7-7a467ee64c30"
+    ],
+    "phone": "8074341986",
+    "preservedFields": {}
+  },
+  {
+    "status": "SKIPPED_CONFLICT",
+    "phone": "8341928526",
+    "emails": [
+      "thestorybuilder8@gmail.com",
+      "bhookr555@gmail.com"
+    ],
+    "leadIds": [
+      "490e2d28-abfc-481c-8fa2-df011f2615a9",
+      "3fb9a8a7-8d8d-4f8a-af30-e07682d8a52a"
+    ]
+  }
+]

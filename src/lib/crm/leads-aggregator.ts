@@ -4,6 +4,7 @@ import { tsValue, parseLeadDate } from "@/lib/crm/leads";
 /** Extended type that tracks all source labels when a lead is merged */
 export type MergedLeadRow = LeadRow & {
   allSources?: string[];
+  identityConflict?: boolean;
 };
 
 /**
@@ -205,19 +206,30 @@ export function deduplicateAndMergeLeads(
   const emailMap = new Map<string, number>();
   const merged: MergedLeadRow[] = [];
 
-  function findExistingIndex(row: MergedLeadRow): number {
+  function findExistingIndex(row: MergedLeadRow): { index: number; conflict: boolean } {
     const phone = normalizePhone(row.phoneNumber);
     const email = normalizeEmail(row.email);
-    if (phone && phoneMap.has(phone)) return phoneMap.get(phone)!;
-    if (email && emailMap.has(email)) return emailMap.get(email)!;
-    return -1;
+    const isSyntheticEmail = !email || email.endsWith("@bhookr.lead");
+
+    const phoneIdx = (phone && phone.length === 10 && phoneMap.has(phone)) ? phoneMap.get(phone)! : -1;
+    const emailIdx = (!isSyntheticEmail && emailMap.has(email)) ? emailMap.get(email)! : -1;
+
+    // Identity conflict: phone points to record A, email points to record B
+    if (phoneIdx !== -1 && emailIdx !== -1 && phoneIdx !== emailIdx) {
+      return { index: -1, conflict: true }; // Keep separate and flag
+    }
+
+    if (phoneIdx !== -1) return { index: phoneIdx, conflict: false };
+    if (emailIdx !== -1) return { index: emailIdx, conflict: false };
+    return { index: -1, conflict: false };
   }
 
   function registerIndex(row: MergedLeadRow, idx: number): void {
     const phone = normalizePhone(row.phoneNumber);
     const email = normalizeEmail(row.email);
-    if (phone) phoneMap.set(phone, idx);
-    if (email) emailMap.set(email, idx);
+    const isSyntheticEmail = !email || email.endsWith("@bhookr.lead");
+    if (phone && phone.length === 10) phoneMap.set(phone, idx);
+    if (!isSyntheticEmail) emailMap.set(email, idx);
   }
 
   const allRaw = [...normalizedWeb, ...normalizedClient];
@@ -226,14 +238,17 @@ export function deduplicateAndMergeLeads(
   allRaw.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
 
   for (const row of allRaw) {
-    const existingIdx = findExistingIndex(row);
+    const { index: existingIdx, conflict } = findExistingIndex(row);
     if (existingIdx === -1) {
-      // New unique lead
+      // New unique lead (or flagged identity conflict kept separate)
       const idx = merged.length;
-      merged.push({ ...row });
+      merged.push({
+        ...row,
+        ...(conflict ? { identityConflict: true } : {}),
+      });
       registerIndex(row, idx);
     } else {
-      // Duplicate — merge into existing entry
+      // Duplicate — merge into existing entry safely
       const existing = merged[existingIdx]!;
       const base = mergeLeadRows(existing, row) as MergedLeadRow;
 

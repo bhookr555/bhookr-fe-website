@@ -15,12 +15,14 @@
 
 "use client";
 
+import { useEffect } from "react";
 import {
   useQuery,
   useMutation,
   useQueryClient,
   keepPreviousData,
 } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase/client";
 import type { LeadRow } from "@/lib/crm/leads";
 import type { SubscriptionRow } from "@/lib/crm/subscriptions";
 import type { OrderRow } from "@/lib/crm/orders";
@@ -170,6 +172,48 @@ function setInitialDashboardData(data: DashboardResponse) {
  * data stays visible while the new fetch runs. No loading flash.
  */
 export function useDashboardData() {
+  const queryClient = useQueryClient();
+
+  // ── Supabase Realtime Subscription ──────────────────────────────────────────
+  // Subscribes directly to postgres_changes on 'leads' and 'subscriptions'.
+  // Whenever any user submits a lead anywhere, this event triggers immediately.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let isMounted = true;
+    const channelName = `crm-dash-realtime-${Date.now()}`;
+    const channel = supabase.channel(channelName);
+
+    channel
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leads" },
+        (payload) => {
+          console.log("[useDashboardData] Realtime leads event:", payload.eventType, payload.new);
+          // Invalidate immediately to fetch fresh canonical list without delay
+          queryClient.invalidateQueries({ queryKey: CRM_QUERY_KEYS.dashboard });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "subscriptions" },
+        (payload) => {
+          console.log("[useDashboardData] Realtime subscriptions event:", payload.eventType);
+          queryClient.invalidateQueries({ queryKey: CRM_QUERY_KEYS.dashboard });
+        }
+      )
+      .subscribe((status, err) => {
+        if (err) {
+          console.warn("[useDashboardData] Realtime subscription notice:", err.message);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel).catch(() => {});
+    };
+  }, [queryClient]);
+
   const query = useQuery<DashboardResponse, Error>({
     queryKey: CRM_QUERY_KEYS.dashboard,
     queryFn: async () => {
@@ -177,15 +221,16 @@ export function useDashboardData() {
       setInitialDashboardData(data);
       return data;
     },
-    staleTime: 2 * 60 * 1000,       // 2 min: serve from cache without network
-    gcTime: 10 * 60 * 1000,         // 10 min: keep in memory across navigations
-    refetchInterval: 5 * 60 * 1000,  // 5 min: background refresh
+    staleTime: 5 * 1000,              // 5s: refresh quickly when leads arrive
+    gcTime: 10 * 60 * 1000,           // 10 min: keep in memory across navigations
+    refetchInterval: 10 * 1000,       // 10s: reliable background synchronization
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,      // Refresh when staff returns to CRM tab
+    refetchOnWindowFocus: true,        // Refresh instantly when staff returns to CRM tab
+    refetchOnReconnect: true,          // Refresh instantly when network reconnects
     retry: 2,
     retryDelay: (i) => Math.min(1000 * 2 ** i, 10_000),
     initialData: getInitialDashboardData, // 0ms INSTANT load from localStorage on frame 1
-    placeholderData: keepPreviousData,  // No flash between refreshes
+    placeholderData: keepPreviousData,    // No flash between refreshes
   });
 
   return query;
