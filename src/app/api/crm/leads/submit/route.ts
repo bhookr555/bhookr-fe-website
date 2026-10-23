@@ -133,19 +133,47 @@ export async function POST(req: NextRequest) {
         .from("leads")
         .select("*")
         .eq("session_id", sessionId)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      if (!sessionErr && sessionMatch) {
-        existingSessionLead = sessionMatch;
+      if (!sessionErr && sessionMatch && sessionMatch.length > 0) {
+        existingSessionLead = sessionMatch[0];
       } else {
         // Fallback check if session_id column not migrated yet: check utm_sub_source
         const { data: fallbackMatch } = await supabaseAdmin
           .from("leads")
           .select("*")
           .eq("utm_sub_source", `sess:${sessionId}`)
-          .maybeSingle();
-        if (fallbackMatch) {
-          existingSessionLead = fallbackMatch;
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (fallbackMatch && fallbackMatch.length > 0) {
+          existingSessionLead = fallbackMatch[0];
+        } else if (normEmail || normPhone) {
+          // If the visitor already filled phone or email in this session, match recent row
+          const orConds: string[] = [];
+          if (normEmail && !normEmail.endsWith("@bhookr.lead")) {
+            orConds.push(`email.ilike.${normEmail}`);
+          }
+          if (normPhone && normPhone.length === 10) {
+            orConds.push(`phone_number.ilike.%${normPhone}%`);
+          }
+          if (orConds.length > 0) {
+            const { data: recentMatch } = await supabaseAdmin
+              .from("leads")
+              .select("*")
+              .or(orConds.join(","))
+              .order("created_at", { ascending: false })
+              .limit(1);
+
+            if (recentMatch && recentMatch.length > 0) {
+              const r = recentMatch[0];
+              const ageMinutes = (Date.now() - new Date(r.created_at).getTime()) / (1000 * 60);
+              if (ageMinutes < 60 && (!r.utm_sub_source || r.utm_sub_source === `sess:${sessionId}`)) {
+                existingSessionLead = r;
+              }
+            }
+          }
         }
       }
     }

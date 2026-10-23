@@ -223,10 +223,36 @@ export function deduplicateAndMergeLeads(
     } as MergedLeadRow;
   });
 
-  // Never drop or merge repeat leads: show every submission
+  // Consolidate rows from the SAME visit session (so intermediate step updates stay on ONE line)
+  // while keeping distinct visits (repeats) as separate rows!
   const allRaw = [...normalizedWeb, ...normalizedClient];
-  allRaw.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
-  return allRaw;
+  const sessionMap = new Map<string, MergedLeadRow>();
+  const results: MergedLeadRow[] = [];
+
+  for (const lead of allRaw) {
+    const sId = lead.sessionId || (lead.utmSubSource?.startsWith("sess:") ? lead.utmSubSource.slice(5) : "");
+    if (sId) {
+      if (sessionMap.has(sId)) {
+        const existing = sessionMap.get(sId)!;
+        // Merge into the existing row, keeping highest step completed
+        const higherStep = Math.max(Number(existing.lastStepCompleted || 0), Number(lead.lastStepCompleted || 0));
+        const merged = mergeLeadRows(existing, lead);
+        merged.lastStepCompleted = higherStep;
+        if (existing.formStatus === "completed" || lead.formStatus === "completed" || higherStep >= 8) {
+          merged.formStatus = "completed";
+        }
+        sessionMap.set(sId, merged);
+      } else {
+        sessionMap.set(sId, lead);
+      }
+    } else {
+      results.push(lead);
+    }
+  }
+
+  const finalLeads = [...results, ...sessionMap.values()];
+  finalLeads.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
+  return finalLeads;
 }
 
 export const MERGED_LEADS_CACHE_TTL_MS = 60 * 1000;
