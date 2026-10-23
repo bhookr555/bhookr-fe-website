@@ -55,178 +55,249 @@ function isPopulated(val: unknown): boolean {
 }
 
 /**
+ * Non-blocking background sync to Google Sheet with retry
+ */
+async function syncToGoogleSheetWithRetry(payload: Record<string, any>, maxRetries = 2) {
+  const url = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
+  if (!url) return;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
+        redirect: "manual",
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.ok || res.status === 302 || res.status === 307) {
+        return;
+      }
+      console.warn(`[GoogleSheetSync] Attempt ${attempt} returned status ${res.status}`);
+    } catch (err: any) {
+      console.warn(`[GoogleSheetSync] Attempt ${attempt} failed: ${err.message}`);
+    }
+    if (attempt < maxRetries) {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+}
+
+/**
  * Server-Side Endpoint for Lead Submissions
- * - Validates incoming data
- * - Normalizes phone and email
- * - Matches canonical customer by:
- *   1. Exact normalized 10-digit phone number
- *   2. Exact normalized email address
- * - Detects identity conflicts (phone belongs to Lead A, email belongs to Lead B)
- * - Merges updates into canonical customer without overwriting non-empty fields with null/empty
- * - Preserves existing status (never resets converted/follow-up back to "lead" or "new")
- * - Guaranteed database write with true success/failure HTTP status
+ * 1. Upserts into Supabase `leads` table using session_id as the primary key.
+ * 2. Saves partial steps immediately without requiring phone/email upfront.
+ * 3. Never merges or deletes duplicates. Accurately flags repeats when matching an earlier session.
+ * 4. Forwards data to Google Sheet with background retries (never stops Supabase save).
  */
 export async function POST(req: NextRequest) {
-  const correlationId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const correlationId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
   try {
-    const body = await req.json();
-    const { email, name, phoneNumber } = body;
+    let body: any = {};
+    const contentType = req.headers.get("content-type") || "";
 
-    const normPhone = normalizeIndianPhone(phoneNumber);
-    const normEmail = normalizeEmail(email);
-
-    if (!normEmail && !normPhone && !name) {
-      return NextResponse.json(
-        { success: false, error: "Missing required lead fields (phone number, email, or name)" },
-        { status: 400 }
-      );
+    if (contentType.includes("application/json")) {
+      body = await req.json();
+    } else {
+      const text = await req.text();
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = {};
+      }
     }
 
-    const cleanEmail = normEmail || (normPhone ? `phone_${normPhone}@bhookr.lead` : `lead_${Date.now()}@bhookr.lead`);
-    const cleanName = String(name || "Website Lead").trim();
+    const sessionId = String(body.sessionId || body.session_id || "").trim() || `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const phoneNumberRaw = body.phoneNumber || body.phone;
+    const normPhone = normalizeIndianPhone(phoneNumberRaw);
+    const normEmail = normalizeEmail(body.email);
+    const cleanName = String(body.name || body.fullName || "").trim();
     const leadSource = body.leadSource || "website";
     const planVal = Array.isArray(body.plan) ? body.plan.join(", ") : (body.plan || null);
+    const stepNum = parseNumber(body.lastStepCompleted) || 1;
+    const totalSteps = parseNumber(body.totalSteps) || 9;
+    const isCompleted = body.formStatus === "completed" || stepNum >= 8 || Boolean(body.checkoutVisited);
+    const formStatus = isCompleted ? "completed" : (body.formStatus || "partial");
 
-    // ── 1. IDENTITY MATCHING ──────────────────────────────────────────────────
-    // Search existing leads by normalized phone (if valid 10 digits) or email
-    let phoneMatch: any = null;
-    let emailMatch: any = null;
+    // Address fields
+    const address = body.address || null;
+    const city = body.city || null;
+    const state = body.state || null;
+    const pinCode = body.pinCode || body.pin_code || null;
 
-    if (normPhone && normPhone.length === 10) {
-      // Find by matching phone
-      const { data: byPhone, error: phoneErr } = await supabaseAdmin
+    // ── 1. CHECK EXISTING ROW FOR THIS SESSION ───────────────────────────────
+    let existingSessionLead: any = null;
+    if (sessionId) {
+      const { data: sessionMatch, error: sessionErr } = await supabaseAdmin
         .from("leads")
         .select("*")
-        .ilike("phone_number", `%${normPhone}%`)
-        .order("created_at", { ascending: true })
-        .limit(1);
+        .eq("session_id", sessionId)
+        .maybeSingle();
 
-      if (!phoneErr && byPhone && byPhone.length > 0) {
-        // Verify normalized phone matches exactly
-        const candidateNorm = normalizeIndianPhone(byPhone[0].phone_number);
-        if (candidateNorm === normPhone) {
-          phoneMatch = byPhone[0];
+      if (!sessionErr && sessionMatch) {
+        existingSessionLead = sessionMatch;
+      } else {
+        // Fallback check if session_id column not migrated yet: check utm_sub_source
+        const { data: fallbackMatch } = await supabaseAdmin
+          .from("leads")
+          .select("*")
+          .eq("utm_sub_source", `sess:${sessionId}`)
+          .maybeSingle();
+        if (fallbackMatch) {
+          existingSessionLead = fallbackMatch;
         }
       }
     }
 
-    if (normEmail && !normEmail.endsWith("@bhookr.lead")) {
-      const { data: byEmail, error: emailErr } = await supabaseAdmin
+    // ── 2. REPEAT DETECTION (Cross-session matching) ──────────────────────────
+    // A lead is a repeat when an earlier lead from a DIFFERENT session_id has the same
+    // phone (last 10 digits) or email (lowercase, trimmed).
+    let isRepeat = false;
+    let firstLeadId: string | null = null;
+
+    if ((normPhone && normPhone.length === 10) || (normEmail && !normEmail.endsWith("@bhookr.lead"))) {
+      let query = supabaseAdmin
         .from("leads")
-        .select("*")
-        .ilike("email", normEmail)
-        .order("created_at", { ascending: true })
-        .limit(1);
+        .select("id, created_at, phone_number, email, utm_sub_source")
+        .order("created_at", { ascending: true });
 
-      if (!emailErr && byEmail && byEmail.length > 0) {
-        emailMatch = byEmail[0];
+      const orConditions: string[] = [];
+      if (normPhone && normPhone.length === 10) {
+        orConditions.push(`phone_number.ilike.%${normPhone}%`);
       }
+      if (normEmail && !normEmail.endsWith("@bhookr.lead")) {
+        orConditions.push(`email.ilike.${normEmail}`);
+      }
+
+      if (orConditions.length > 0) {
+        const { data: candidateMatches } = await query.or(orConditions.join(",")).limit(20);
+
+        if (candidateMatches && candidateMatches.length > 0) {
+          const exactMatches = candidateMatches.filter((m: any) => {
+            if (sessionId) {
+              if (m.session_id && m.session_id === sessionId) return false;
+              if (m.utm_sub_source === `sess:${sessionId}`) return false;
+            }
+            if (existingSessionLead && m.id === existingSessionLead.id) return false;
+            const mPhone = normalizeIndianPhone(m.phone_number);
+            const mEmail = normalizeEmail(m.email);
+            const matchByPhone = normPhone && normPhone.length === 10 && mPhone === normPhone;
+            const matchByEmail = normEmail && !normEmail.endsWith("@bhookr.lead") && mEmail === normEmail;
+            return matchByPhone || matchByEmail;
+          });
+
+          if (exactMatches.length > 0 && exactMatches[0]) {
+            exactMatches.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            isRepeat = true;
+            firstLeadId = exactMatches[0]?.id || null;
+          }
+        }
+      }
+    } else if (existingSessionLead) {
+      // Preserve existing repeat flags if contact info not changed
+      isRepeat = Boolean(existingSessionLead.is_repeat);
+      firstLeadId = existingSessionLead.first_lead_id || null;
     }
 
-    // ── 2. IDENTITY CONFLICT DETECTION ────────────────────────────────────────
-    let identityConflict = false;
-    let canonicalRecord: any = null;
-
-    if (phoneMatch && emailMatch && phoneMatch.id !== emailMatch.id) {
-      // Phone points to person A, email points to person B!
-      console.warn(`[${correlationId}] Identity conflict detected: phone matched lead ${phoneMatch.id}, email matched lead ${emailMatch.id}`);
-      identityConflict = true;
-      // Do not merge unsafe conflict: treat phone match as primary canonical record but do not link conflicting email
-      canonicalRecord = phoneMatch;
-    } else {
-      canonicalRecord = phoneMatch || emailMatch || null;
-    }
-
+    // ── 3. SAVE / UPSERT INTO SUPABASE ───────────────────────────────────────
     let resultRecord: any = null;
     let isCreated = false;
 
-    // ── 3. PERSISTENCE: UPDATE OR INSERT ──────────────────────────────────────
-    if (canonicalRecord) {
-      // EXISTING CANONICAL CUSTOMER: Update non-destructively
+    if (existingSessionLead) {
+      // UPDATE existing row for this session
       const updatePayload: Record<string, any> = {
         updated_at: new Date().toISOString(),
+        last_step_completed: Math.max(existingSessionLead.last_step_completed || 0, stepNum),
+        total_steps: totalSteps,
+        form_status: formStatus,
+        is_repeat: isRepeat,
+        first_lead_id: firstLeadId,
       };
 
-      // Update name only if incoming is non-empty and current is generic
-      if (cleanName && (!canonicalRecord.name || canonicalRecord.name === "Website Lead" || canonicalRecord.name === "Lead")) {
-        updatePayload.name = cleanName;
-      }
-
-      // Update phone only if missing
-      if (!canonicalRecord.phone_number && normPhone) {
-        updatePayload.phone_number = normPhone;
-      }
-
-      // Update email only if currently missing or synthetic, and no conflict
-      if (!identityConflict && normEmail && (!canonicalRecord.email || canonicalRecord.email.endsWith("@bhookr.lead"))) {
-        updatePayload.email = normEmail;
-      }
-
-      // Preserve non-empty profile values
-      if (parseNumber(body.age) !== null && !isPopulated(canonicalRecord.age)) updatePayload.age = parseNumber(body.age);
-      if (body.gender && !isPopulated(canonicalRecord.gender)) updatePayload.gender = body.gender;
-      if (parseNumber(body.height) !== null && !isPopulated(canonicalRecord.height)) updatePayload.height = parseNumber(body.height);
-      if (parseNumber(body.weight) !== null && !isPopulated(canonicalRecord.weight)) updatePayload.weight = parseNumber(body.weight);
-      if (body.goal && !isPopulated(canonicalRecord.goal)) updatePayload.goal = body.goal;
-      if (body.diet && !isPopulated(canonicalRecord.diet)) updatePayload.diet = body.diet;
-      if (body.foodPreference && !isPopulated(canonicalRecord.food_preference)) updatePayload.food_preference = body.foodPreference;
-      if (body.physicalState && !isPopulated(canonicalRecord.physical_state)) updatePayload.physical_state = body.physicalState;
-      if (body.foodLove && !isPopulated(canonicalRecord.food_love)) updatePayload.food_love = body.foodLove;
-      if (body.subscriptionType && !isPopulated(canonicalRecord.subscription_type)) updatePayload.subscription_type = body.subscriptionType;
-      if (planVal && !isPopulated(canonicalRecord.plan)) updatePayload.plan = planVal;
-      if (body.subscriptionStartDate && !isPopulated(canonicalRecord.subscription_start_date)) {
+      if (cleanName) updatePayload.name = cleanName;
+      if (normEmail) updatePayload.email = normEmail;
+      if (normPhone || phoneNumberRaw) updatePayload.phone_number = normPhone || String(phoneNumberRaw);
+      if (parseNumber(body.age) !== null) updatePayload.age = parseNumber(body.age);
+      if (isPopulated(body.gender)) updatePayload.gender = body.gender;
+      if (parseNumber(body.height) !== null) updatePayload.height = parseNumber(body.height);
+      if (parseNumber(body.weight) !== null) updatePayload.weight = parseNumber(body.weight);
+      if (isPopulated(body.goal)) updatePayload.goal = body.goal;
+      if (isPopulated(body.diet)) updatePayload.diet = body.diet;
+      if (isPopulated(body.foodPreference)) updatePayload.food_preference = body.foodPreference;
+      if (isPopulated(body.physicalState)) updatePayload.physical_state = body.physicalState;
+      if (isPopulated(body.foodLove)) updatePayload.food_love = body.foodLove;
+      if (isPopulated(body.subscriptionType)) updatePayload.subscription_type = body.subscriptionType;
+      if (isPopulated(planVal)) updatePayload.plan = planVal;
+      if (isPopulated(body.subscriptionStartDate)) {
         updatePayload.subscription_start_date = parseDateSafe(body.subscriptionStartDate);
       }
-
-      // Funnel steps: only advance, never regress
-      const incomingStep = parseNumber(body.lastStepCompleted) || 0;
-      if (incomingStep > (canonicalRecord.last_step_completed || 0)) {
-        updatePayload.last_step_completed = incomingStep;
-      }
-      if (body.checkoutVisited) {
-        updatePayload.checkout_visited = true;
-      }
-
-      // Attribution: keep original UTMs if present, else set from incoming
-      if (!isPopulated(canonicalRecord.utm_source) && body.utmSource) {
-        updatePayload.utm_source = body.utmSource;
-      }
-      if (!isPopulated(canonicalRecord.utm_sub_source) && body.utmSubSource) {
+      if (body.checkoutVisited) updatePayload.checkout_visited = true;
+      if (isPopulated(address)) updatePayload.address = address;
+      if (isPopulated(city)) updatePayload.city = city;
+      if (isPopulated(state)) updatePayload.state = state;
+      if (isPopulated(pinCode)) updatePayload.pin_code = pinCode;
+      if (body.utmSource) updatePayload.utm_source = body.utmSource;
+      if (body.utmSubSource) {
         updatePayload.utm_sub_source = body.utmSubSource;
+      } else if (!existingSessionLead.session_id && sessionId && !existingSessionLead.utm_sub_source) {
+        updatePayload.utm_sub_source = `sess:${sessionId}`;
       }
 
-      // CRITICAL: NEVER reset an existing converted, follow-up, or in-progress status back to "lead" or "new"
+      // Never reset pipeline statuses back to "lead"
       const PROTECTED_STATUSES = ["converted", "follow_up", "hot_prospect", "trial_requested", "future_prospect", "pending"];
-      if (!PROTECTED_STATUSES.includes(canonicalRecord.status)) {
+      if (!PROTECTED_STATUSES.includes(existingSessionLead.status)) {
         if (body.status && body.status !== "lead") {
           updatePayload.status = body.status;
         }
       }
 
-      const { data: updated, error: updateErr } = await supabaseAdmin
+      // Safe update with fallback if certain columns haven't migrated yet
+      let { data: updated, error: updateErr } = await supabaseAdmin
         .from("leads")
         .update(updatePayload)
-        .eq("id", canonicalRecord.id)
+        .eq("id", existingSessionLead.id)
         .select()
         .single();
 
+      if (updateErr && updateErr.message?.includes("column")) {
+        console.warn(`[${correlationId}] Retrying update without extended columns:`, updateErr.message);
+        const fallbackPayload = { ...updatePayload };
+        delete fallbackPayload.total_steps;
+        delete fallbackPayload.form_status;
+        delete fallbackPayload.is_repeat;
+        delete fallbackPayload.first_lead_id;
+        delete fallbackPayload.address;
+        delete fallbackPayload.city;
+        delete fallbackPayload.state;
+        delete fallbackPayload.pin_code;
+        const fallbackRes = await supabaseAdmin
+          .from("leads")
+          .update(fallbackPayload)
+          .eq("id", existingSessionLead.id)
+          .select()
+          .single();
+        updated = fallbackRes.data;
+        updateErr = fallbackRes.error;
+      }
+
       if (updateErr) {
-        console.error(`[${correlationId}] Failed to update canonical lead ${canonicalRecord.id}:`, updateErr);
+        console.error(`[${correlationId}] Failed to update lead ${existingSessionLead.id}:`, updateErr);
         return NextResponse.json(
           { success: false, error: "Database update failed: " + updateErr.message },
           { status: 500 }
         );
       }
 
-      resultRecord = updated;
+      resultRecord = updated || existingSessionLead;
       isCreated = false;
     } else {
-      // NEW CUSTOMER: Insert new canonical record
-      const newLeadRecord = {
-        name: cleanName,
-        email: cleanEmail,
-        phone_number: normPhone || (phoneNumber ? String(phoneNumber).trim() : null),
+      // INSERT new lead row for this session
+      const newLeadRecord: Record<string, any> = {
+        session_id: sessionId,
+        name: cleanName || "Lead",
+        email: normEmail || (normPhone ? `phone_${normPhone}@bhookr.lead` : `lead_${Date.now()}@bhookr.lead`),
+        phone_number: normPhone || (phoneNumberRaw ? String(phoneNumberRaw).trim() : null),
         age: parseNumber(body.age),
         gender: body.gender || null,
         height: parseNumber(body.height),
@@ -240,19 +311,67 @@ export async function POST(req: NextRequest) {
         plan: planVal,
         subscription_start_date: parseDateSafe(body.subscriptionStartDate),
         status: body.status || "lead",
-        last_step_completed: parseNumber(body.lastStepCompleted) || 1,
+        last_step_completed: stepNum,
+        total_steps: totalSteps,
+        form_status: formStatus,
+        is_repeat: isRepeat,
+        first_lead_id: firstLeadId,
+        address: address,
+        city: city,
+        state: state,
+        pin_code: pinCode,
         checkout_visited: Boolean(body.checkoutVisited),
         utm_source: body.utmSource || null,
         utm_sub_source: body.utmSubSource || null,
         lead_source: leadSource,
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
-      const { data: inserted, error: insertErr } = await supabaseAdmin
+      let { data: inserted, error: insertErr } = await supabaseAdmin
         .from("leads")
-        .insert(newLeadRecord)
+        .upsert(newLeadRecord, { onConflict: "session_id" })
         .select()
         .single();
+
+      if (insertErr && (insertErr.message?.includes("column") || insertErr.message?.includes("session_id"))) {
+        console.warn(`[${correlationId}] Retrying insert with legacy schema fallback:`, insertErr.message);
+        const fallbackInsert = { ...newLeadRecord };
+        delete fallbackInsert.session_id;
+        delete fallbackInsert.total_steps;
+        delete fallbackInsert.form_status;
+        delete fallbackInsert.is_repeat;
+        delete fallbackInsert.first_lead_id;
+        delete fallbackInsert.address;
+        delete fallbackInsert.city;
+        delete fallbackInsert.state;
+        delete fallbackInsert.pin_code;
+        if (sessionId && !fallbackInsert.utm_sub_source) {
+          fallbackInsert.utm_sub_source = `sess:${sessionId}`;
+        }
+        let fbRes = await supabaseAdmin
+          .from("leads")
+          .insert(fallbackInsert)
+          .select()
+          .single();
+        inserted = fbRes.data;
+        insertErr = fbRes.error;
+
+        // If leads_email_source_unique constraint violated before migration is run, retry with repeat lead_source
+        if (insertErr && insertErr.message?.includes("leads_email_source_unique")) {
+          console.warn(`[${correlationId}] Retrying insert with repeat lead source:`, insertErr.message);
+          const repeatInsert = { ...fallbackInsert, lead_source: `website_repeat_${Date.now()}` };
+          const repRes = await supabaseAdmin.from("leads").insert(repeatInsert).select().single();
+          inserted = repRes.data;
+          insertErr = repRes.error;
+        }
+      } else if (insertErr && insertErr.message?.includes("leads_email_source_unique")) {
+        console.warn(`[${correlationId}] Retrying insert with repeat lead source:`, insertErr.message);
+        const repeatInsert = { ...newLeadRecord, lead_source: `website_repeat_${Date.now()}` };
+        const repRes = await supabaseAdmin.from("leads").insert(repeatInsert).select().single();
+        inserted = repRes.data;
+        insertErr = repRes.error;
+      }
 
       if (insertErr) {
         console.error(`[${correlationId}] Failed to insert new lead:`, insertErr);
@@ -266,30 +385,71 @@ export async function POST(req: NextRequest) {
       isCreated = true;
     }
 
-    // Optional background sync to Google Sheet (non-blocking)
-    const leadsSheetUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
-    if (leadsSheetUrl) {
-      fetch(leadsSheetUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ ...body, email: resultRecord.email, phone: resultRecord.phone_number }),
-        redirect: "manual",
-        signal: AbortSignal.timeout(5000),
-      }).catch((e) => console.warn(`[${correlationId}] Optional Google Sheet forward notice:`, e.message));
-    }
+    // ── 4. FORWARD TO GOOGLE SHEET (Non-blocking with retry) ───────────────────
+    const formattedAddress = [
+      resultRecord.address || address,
+      resultRecord.city || city,
+      resultRecord.state || state,
+      resultRecord.pin_code || pinCode,
+    ].filter(Boolean).join(", ");
+
+    const otherDetailsParts = [
+      resultRecord.goal ? `Goal: ${resultRecord.goal}` : "",
+      resultRecord.diet ? `Diet: ${resultRecord.diet}` : "",
+      resultRecord.food_preference ? `Pref: ${resultRecord.food_preference}` : "",
+      resultRecord.plan ? `Plan: ${resultRecord.plan}` : "",
+      resultRecord.subscription_type ? `Duration: ${resultRecord.subscription_type}` : "",
+      resultRecord.age ? `Age: ${resultRecord.age}` : "",
+      resultRecord.gender ? `Gender: ${resultRecord.gender}` : "",
+    ].filter(Boolean).join(" | ");
+
+    const howFarText = formStatus === "completed" || (resultRecord.last_step_completed || stepNum) >= 8 || resultRecord.checkout_visited
+      ? "Completed"
+      : `Step ${resultRecord.last_step_completed || stepNum} of ${totalSteps}`;
+
+    const sheetPayload = {
+      action: "upsertLead",
+      sessionId: resultRecord.session_id || sessionId,
+      date: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+      name: resultRecord.name || "",
+      phone: resultRecord.phone_number || "",
+      email: resultRecord.email || "",
+      address: formattedAddress,
+      otherDetails: otherDetailsParts,
+      howFarTheyGot: howFarText,
+      filledBefore: isRepeat ? "Yes" : "No",
+      // Legacy compatibility
+      phoneNumber: resultRecord.phone_number || "",
+      lastStepCompleted: resultRecord.last_step_completed || stepNum,
+      plan: resultRecord.plan || "",
+      status: resultRecord.status || "lead",
+    };
+
+    // Fire non-blocking forward to Google Sheet
+    syncToGoogleSheetWithRetry(sheetPayload).catch((e) =>
+      console.warn(`[${correlationId}] Google Sheet sync notice:`, e.message)
+    );
 
     return NextResponse.json({
       success: true,
-      message: isCreated ? "Canonical customer created successfully" : "Canonical customer updated successfully",
+      message: isCreated ? "Lead recorded successfully" : "Lead updated successfully",
       canonicalId: resultRecord.id,
+      sessionId: resultRecord.session_id || sessionId,
       isCreated,
-      identityConflict,
+      isRepeat,
+      firstLeadId,
       lead: {
         id: resultRecord.id,
+        sessionId: resultRecord.session_id || sessionId,
         name: resultRecord.name,
         email: resultRecord.email,
         phoneNumber: resultRecord.phone_number,
         status: resultRecord.status,
+        lastStepCompleted: resultRecord.last_step_completed,
+        totalSteps: resultRecord.total_steps || totalSteps,
+        formStatus: resultRecord.form_status || formStatus,
+        isRepeat,
+        firstLeadId,
         createdAt: resultRecord.created_at,
       },
     });

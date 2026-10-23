@@ -1,23 +1,30 @@
 /**
  * Google Apps Script for BHOOKR WEBSITE LEADS SHEET
- * Purpose: Track all users who complete Step 1 to Step 7 of the subscription form
- * Specifically targets "Sheet2" tab so new leads land cleanly in Sheet2 at Row 2.
+ * Purpose: Track all user submissions from the subscription form in real-time.
  * 
- * SETUP INSTRUCTIONS:
- * 1. Open your Google Sheet named "BHOOKER WEBSITE LEADS"
- * 2. Select Extensions > Apps Script
- * 3. Replace all code with this script
- * 4. Deploy > New deployment > Web app
- * 5. Set "Execute as" to "Me"
- * 6. Set "Who has access" to "Anyone"
- * 7. Deploy and copy the Web App URL into .env.local as NEXT_PUBLIC_LEADS_SHEET_URL
+ * Rules:
+ * 1. One row per visit, updated by session_id (kept in hidden column I).
+ * 2. Visible columns only: Date, Name, Phone, Email, Address, Other details, How far they got, Filled before?
+ * 3. If "Filled before?" is "Yes", shade the row a light color.
+ * 4. Plain words only - no technical jargon or internal codes.
  */
 
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  // Target "Sheet2" specifically; fallback to "Sheet1" or active sheet if missing
   return ss.getSheetByName("Sheet2") || ss.getSheetByName("Sheet1") || ss.getActiveSheet();
 }
+
+const HEADERS = [
+  'Date',
+  'Name',
+  'Phone',
+  'Email',
+  'Address',
+  'Other details',
+  'How far they got',
+  'Filled before?',
+  'session_id'
+];
 
 function doGet(e) {
   try {
@@ -30,14 +37,12 @@ function doGet(e) {
         success: true,
         rows: [],
         total: 0,
-        message: 'No leads found in Sheet2'
+        message: 'No leads found'
       });
     }
 
-    const headers = values[0].map(function(h, idx) {
-      var s = String(h).trim();
-      if (idx === 0 && !s) return "timestamp";
-      return s;
+    const headers = values[0].map(function(h) {
+      return String(h).trim();
     });
     const rows = [];
 
@@ -54,15 +59,13 @@ function doGet(e) {
         }
 
         if (val instanceof Date) {
-          rowObj[header] = val.toISOString();
+          rowObj[header] = Utilities.formatDate(val, "Asia/Kolkata", "yyyy-MM-dd hh:mm a");
         } else {
           rowObj[header] = val;
         }
       }
 
-      // Ignore empty rows or rows without contact info
-      if (!isEmpty && (rowObj.email || rowObj.phoneNumber || rowObj.name)) {
-        rowObj.leadSource = "website";
+      if (!isEmpty && (rowObj.Email || rowObj.Phone || rowObj.Name || rowObj.email || rowObj.phoneNumber || rowObj.name)) {
         rows.push(rowObj);
       }
     }
@@ -85,7 +88,6 @@ function doGet(e) {
   }
 }
 
-// Handle POST requests (Step 1 and Step 7 form submissions)
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -93,131 +95,83 @@ function doPost(e) {
     }
 
     const data = JSON.parse(e.postData.contents);
-    
-    // CRITICAL: Reject blank submissions to prevent empty rows
-    const cleanName = String(data.name || '').trim();
-    const cleanEmail = String(data.email || '').trim();
-    const cleanPhone = String(data.phoneNumber || '').replace(/\D/g, '');
-
-    if (!cleanName && !cleanEmail && !cleanPhone) {
-      return createJsonResponse({
-        success: false,
-        error: 'Rejected blank lead submission: name, email, or phone is required'
-      });
-    }
-
     const sheet = getSheet();
-    const headers = [
-      'timestamp',
-      'name',
-      'email',
-      'phoneNumber',
-      'age',
-      'gender',
-      'height',
-      'weight',
-      'goal',
-      'diet',
-      'foodPreference',
-      'physicalState',
-      'subscriptionType',
-      'plan',
-      'subscriptionStartDate',
-      'status',
-      'lastStepCompleted',
-      'checkoutVisited',
-      'utmSource',
-      'utmSubSource'
-    ];
 
-    // Initialize headers if Sheet2 is completely empty
+    // Ensure header row exists with visible columns and session_id as the 9th column
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(headers);
-      const headerRange = sheet.getRange(1, 1, 1, headers.length);
+      sheet.appendRow(HEADERS);
+      const headerRange = sheet.getRange(1, 1, 1, HEADERS.length);
       headerRange.setFontWeight('bold');
-      headerRange.setBackground('#4285f4');
+      headerRange.setBackground('#E31E24');
       headerRange.setFontColor('#ffffff');
+      // Hide session_id column (column 9) to keep only visible columns
+      sheet.hideColumns(9);
     }
 
+    const sessionId = String(data.sessionId || data.session_id || '').trim();
     const lastRow = sheet.getLastRow();
     let existingRow = -1;
 
-    // Search for existing lead by Phone Number (Col D = 4) first, then Email (Col C = 3) second
-    if (lastRow > 1) {
-      const dataValues = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-      for (var i = 0; i < dataValues.length; i++) {
-        var rowEmail = String(dataValues[i][2] || '').trim().toLowerCase();
-        var rowPhone = String(dataValues[i][3] || '').replace(/\D/g, '');
-
-        var phoneMatch = cleanPhone && rowPhone && (rowPhone.slice(-10) === cleanPhone.slice(-10));
-        var emailMatch = cleanEmail && rowEmail && (rowEmail === cleanEmail.toLowerCase());
-
-        if (phoneMatch || emailMatch) {
+    // Search for existing row by session_id in Column 9 (Column I)
+    if (sessionId && lastRow > 1) {
+      const idValues = sheet.getRange(2, 9, lastRow - 1, 1).getValues();
+      for (var i = 0; i < idValues.length; i++) {
+        if (String(idValues[i][0]).trim() === sessionId) {
           existingRow = i + 2;
           break;
         }
       }
     }
 
-    const timestamp = new Date();
+    // Prepare human-readable plain fields
+    const dateStr = data.date || Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd hh:mm a");
+    const nameStr = String(data.name || '').trim();
+    const phoneStr = String(data.phone || data.phoneNumber || '').trim();
+    const emailStr = String(data.email || '').trim();
+    const addressStr = String(data.address || '').trim();
+    const otherDetailsStr = String(data.otherDetails || '').trim();
+    const howFarStr = String(data.howFarTheyGot || (data.lastStepCompleted ? 'Step ' + data.lastStepCompleted + ' of 9' : 'Step 1 of 9')).trim();
+    const filledBeforeStr = (data.filledBefore === 'Yes' || data.isRepeat === true || data.is_repeat === true) ? 'Yes' : 'No';
+
     const rowData = [
-      timestamp,
-      data.name || '',
-      data.email || '',
-      data.phoneNumber || '',
-      data.age || '',
-      data.gender || '',
-      data.height || '',
-      data.weight || '',
-      data.goal || '',
-      data.diet || '',
-      data.foodPreference || '',
-      data.physicalState || '',
-      data.subscriptionType || '',
-      Array.isArray(data.plan) ? data.plan.join(', ') : (data.plan || ''),
-      data.subscriptionStartDate || '',
-      data.status || 'lead',
-      data.lastStepCompleted || 1,
-      data.checkoutVisited || false,
-      data.utmSource || '',
-      data.utmSubSource || ''
+      dateStr,
+      nameStr,
+      phoneStr,
+      emailStr,
+      addressStr,
+      otherDetailsStr,
+      howFarStr,
+      filledBeforeStr,
+      sessionId
     ];
 
+    const isRepeat = (filledBeforeStr === 'Yes');
+    const highlightColor = isRepeat ? '#FFF3CD' : '#FFFFFF'; // Light yellow shading for repeat leads
+
     if (existingRow > 0) {
-      // Update existing lead row in place (preserve original timestamp if present)
-      const existingRange = sheet.getRange(existingRow, 1, 1, headers.length);
-      const existingValues = existingRange.getValues()[0];
-      
-      // Preserve existing timestamp if secondary update
-      if (existingValues[0]) {
-        rowData[0] = existingValues[0];
-      }
-
-      // Merge non-empty values into existing row
-      for (var k = 1; k < headers.length; k++) {
-        if (!rowData[k] && existingValues[k]) {
-          rowData[k] = existingValues[k];
-        }
-      }
-
-      existingRange.setValues([rowData]);
+      // Update existing visit row in place
+      const range = sheet.getRange(existingRow, 1, 1, HEADERS.length);
+      range.setValues([rowData]);
+      sheet.getRange(existingRow, 1, 1, 8).setBackground(highlightColor);
 
       return createJsonResponse({
         success: true,
-        message: 'Lead updated successfully in Sheet2',
+        message: 'Lead updated by session_id in Google Sheet',
         rowNumber: existingRow,
-        email: data.email || data.phoneNumber
+        sessionId: sessionId
       });
     } else {
-      // Insert NEW lead at Row 2 (Top of Sheet2, right under headers)
+      // Insert new visit row at Row 2 (top of list under headers)
       sheet.insertRowBefore(2);
-      sheet.getRange(2, 1, 1, headers.length).setValues([rowData]);
+      const range = sheet.getRange(2, 1, 1, HEADERS.length);
+      range.setValues([rowData]);
+      sheet.getRange(2, 1, 1, 8).setBackground(highlightColor);
 
       return createJsonResponse({
         success: true,
-        message: 'Lead added successfully at top of Sheet2 (Row 2)',
+        message: 'New lead added to Google Sheet',
         rowNumber: 2,
-        email: data.email || data.phoneNumber
+        sessionId: sessionId
       });
     }
 
@@ -230,7 +184,6 @@ function doPost(e) {
   }
 }
 
-// Helper to construct JSON response
 function createJsonResponse(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);

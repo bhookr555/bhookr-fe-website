@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 function mapSupabaseLead(row: Record<string, any>, source: "website" | "client_form"): LeadRow {
   return {
+    id: row.id,
+    sessionId: row.session_id,
     timestamp: row.created_at,
     name: row.name || "Lead",
     email: row.email || "",
@@ -26,6 +28,14 @@ function mapSupabaseLead(row: Record<string, any>, source: "website" | "client_f
     subscriptionStartDate: row.subscription_start_date || "",
     status: row.status || "lead",
     lastStepCompleted: row.last_step_completed ?? 0,
+    totalSteps: row.total_steps ?? 9,
+    formStatus: row.form_status || (row.last_step_completed >= 8 || row.checkout_visited ? "completed" : "partial"),
+    isRepeat: Boolean(row.is_repeat),
+    firstLeadId: row.first_lead_id || null,
+    address: row.address || "",
+    city: row.city || "",
+    state: row.state || "",
+    pinCode: row.pin_code || "",
     checkoutVisited: Boolean(row.checkout_visited),
     utmSource: row.utm_source || "",
     utmSubSource: row.utm_sub_source || "",
@@ -112,17 +122,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Execute all 4 queries in parallel in Supabase PostgreSQL
-    const [leadsRes, clientFormRes, subsRes, ordersRes] = await Promise.all([
+    // Execute queries in parallel in Supabase PostgreSQL
+    const [leadsRes, subsRes, ordersRes] = await Promise.all([
       supabaseAdmin
         .from("leads")
         .select("*")
-        .eq("lead_source", "website")
-        .order("created_at", { ascending: false }),
-      supabaseAdmin
-        .from("leads")
-        .select("*")
-        .eq("lead_source", "client_form")
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("subscriptions")
@@ -134,8 +138,13 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: false }),
     ]);
 
-    const websiteRows: LeadRow[] = (leadsRes.data || []).map((r) => mapSupabaseLead(r, "website"));
-    const clientRows: LeadRow[] = (clientFormRes.data || []).map((r) => mapSupabaseLead(r, "client_form"));
+    const allLeads = leadsRes.data || [];
+    const websiteRows: LeadRow[] = allLeads
+      .filter((r) => r.lead_source !== "client_form")
+      .map((r) => mapSupabaseLead(r, "website"));
+    const clientRows: LeadRow[] = allLeads
+      .filter((r) => r.lead_source === "client_form")
+      .map((r) => mapSupabaseLead(r, "client_form"));
     const subRows: SubscriptionRow[] = (subsRes.data || []).map(mapSupabaseSubscription);
     const ordRows: OrderRow[] = (ordersRes.data || []).map(mapSupabaseOrder);
 
@@ -148,7 +157,7 @@ export async function GET(req: NextRequest) {
           total: websiteRows.length,
         },
         clientForm: {
-          success: !clientFormRes.error,
+          success: !leadsRes.error,
           rows: clientRows,
           total: clientRows.length,
         },

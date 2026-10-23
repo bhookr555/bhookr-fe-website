@@ -181,10 +181,21 @@ export function deduplicateAndMergeLeads(
     const raw = sanitizeLeadRow(r as Record<string, any>);
     return {
       ...raw,
-      name: extractLeadName(raw) || raw.name || "",
+      id: raw.id || r.id,
+      sessionId: raw.sessionId || raw.session_id,
+      name: extractLeadName(raw) || raw.name || "Lead",
       timestamp: extractLeadTimestamp(raw) || raw.timestamp || "",
       leadSource: "website",
       allSources: ["Website Lead"],
+      isRepeat: Boolean(raw.isRepeat || raw.is_repeat),
+      firstLeadId: raw.firstLeadId || raw.first_lead_id || null,
+      formStatus: raw.formStatus || raw.form_status,
+      lastStepCompleted: raw.lastStepCompleted ?? raw.last_step_completed ?? 0,
+      totalSteps: raw.totalSteps ?? raw.total_steps ?? 9,
+      address: raw.address,
+      city: raw.city,
+      state: raw.state,
+      pinCode: raw.pinCode || raw.pin_code,
     } as MergedLeadRow;
   });
 
@@ -194,84 +205,28 @@ export function deduplicateAndMergeLeads(
     const src = hasUtm ? "website" : "client_form";
     return {
       ...raw,
-      name: extractLeadName(raw) || raw.name || "",
+      id: raw.id || r.id,
+      sessionId: raw.sessionId || raw.session_id,
+      name: extractLeadName(raw) || raw.name || "Lead",
       timestamp: extractLeadTimestamp(raw) || raw.timestamp || "",
       leadSource: src,
       allSources: [sourceLabel(src)],
+      isRepeat: Boolean(raw.isRepeat || raw.is_repeat),
+      firstLeadId: raw.firstLeadId || raw.first_lead_id || null,
+      formStatus: raw.formStatus || raw.form_status,
+      lastStepCompleted: raw.lastStepCompleted ?? raw.last_step_completed ?? 0,
+      totalSteps: raw.totalSteps ?? raw.total_steps ?? 9,
+      address: raw.address,
+      city: raw.city,
+      state: raw.state,
+      pinCode: raw.pinCode || raw.pin_code,
     } as MergedLeadRow;
   });
 
-  // Index buckets: phone → index, email → index
-  const phoneMap = new Map<string, number>();
-  const emailMap = new Map<string, number>();
-  const merged: MergedLeadRow[] = [];
-
-  function findExistingIndex(row: MergedLeadRow): { index: number; conflict: boolean } {
-    const phone = normalizePhone(row.phoneNumber);
-    const email = normalizeEmail(row.email);
-    const isSyntheticEmail = !email || email.endsWith("@bhookr.lead");
-
-    const phoneIdx = (phone && phone.length === 10 && phoneMap.has(phone)) ? phoneMap.get(phone)! : -1;
-    const emailIdx = (!isSyntheticEmail && emailMap.has(email)) ? emailMap.get(email)! : -1;
-
-    // Identity conflict: phone points to record A, email points to record B
-    if (phoneIdx !== -1 && emailIdx !== -1 && phoneIdx !== emailIdx) {
-      return { index: -1, conflict: true }; // Keep separate and flag
-    }
-
-    if (phoneIdx !== -1) return { index: phoneIdx, conflict: false };
-    if (emailIdx !== -1) return { index: emailIdx, conflict: false };
-    return { index: -1, conflict: false };
-  }
-
-  function registerIndex(row: MergedLeadRow, idx: number): void {
-    const phone = normalizePhone(row.phoneNumber);
-    const email = normalizeEmail(row.email);
-    const isSyntheticEmail = !email || email.endsWith("@bhookr.lead");
-    if (phone && phone.length === 10) phoneMap.set(phone, idx);
-    if (!isSyntheticEmail) emailMap.set(email, idx);
-  }
-
+  // Never drop or merge repeat leads: show every submission
   const allRaw = [...normalizedWeb, ...normalizedClient];
-
-  // Sort newest first before merging so primary = latest submission
   allRaw.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
-
-  for (const row of allRaw) {
-    const { index: existingIdx, conflict } = findExistingIndex(row);
-    if (existingIdx === -1) {
-      // New unique lead (or flagged identity conflict kept separate)
-      const idx = merged.length;
-      merged.push({
-        ...row,
-        ...(conflict ? { identityConflict: true } : {}),
-      });
-      registerIndex(row, idx);
-    } else {
-      // Duplicate — merge into existing entry safely
-      const existing = merged[existingIdx]!;
-      const base = mergeLeadRows(existing, row) as MergedLeadRow;
-
-      // Combine all source labels deduped
-      const existingSources = existing.allSources ?? [sourceLabel(existing.leadSource)];
-      const newSources = row.allSources ?? [sourceLabel(row.leadSource)];
-      const combinedSources = Array.from(new Set([...existingSources, ...newSources]));
-
-      merged[existingIdx] = {
-        ...base,
-        allSources: combinedSources,
-        leadSource: combinedSources.length > 1 ? "both" : base.leadSource,
-      };
-
-      // Re-register keys in case the secondary had a different phone/email
-      registerIndex(row, existingIdx);
-    }
-  }
-
-  // Sort final merged list newest first
-  merged.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
-
-  return merged;
+  return allRaw;
 }
 
 export const MERGED_LEADS_CACHE_TTL_MS = 60 * 1000;

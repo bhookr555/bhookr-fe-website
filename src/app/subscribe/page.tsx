@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscriptionStore } from "@/store/subscription";
@@ -81,82 +81,146 @@ export default function SubscriptionPage() {
   const totalSteps = getTotalSteps();
   const progressPercentage = ((currentStep + 1) / totalSteps) * 100;
 
-  const handlePlanSelectionNext = async (data: PlanSelectionFormData) => {
-    updateFormData({ planSelection: data });
-    
-    // Step 7 completed - Submit lead to Google Sheets
-    console.log('📝 Step 7 completed - Submitting lead to Google Sheets...');
-    console.log('📋 Form data being submitted:', {
-      personalInfo: formData.personalInfo,
-      physicalInfo: formData.physicalInfo,
-      planSelection: data,
-      selectedMeals: data.selectedMeals
-    });
-    
-    try {
-      // Read UTM parameters from stored session (or URL fallback)
+  // Session ID for the visit (persisted across page navigation in sessionStorage)
+  const [sessionId, setSessionId] = useState<string>("");
+  const sessionIdRef = useRef<string>("");
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const currentStepRef = useRef(currentStep);
+  currentStepRef.current = currentStep;
+
+  useEffect(() => {
+    let sid = "";
+    if (typeof window !== "undefined") {
+      sid = sessionStorage.getItem("bhookr_subscribe_session_id") || "";
+      if (!sid) {
+        sid = typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        sessionStorage.setItem("bhookr_subscribe_session_id", sid);
+      }
+      setSessionId(sid);
+      sessionIdRef.current = sid;
+    }
+  }, []);
+
+  // Helper to build lead payload
+  const buildLeadPayload = useCallback(
+    (stepNum: number, override?: Record<string, any>, isCheckout: boolean = false, isCompleted: boolean = false) => {
+      const sid = sessionIdRef.current || (typeof window !== "undefined" ? sessionStorage.getItem("bhookr_subscribe_session_id") : "") || "";
+      const currentData = {
+        ...formDataRef.current,
+        ...override,
+      };
+
       const stored = getStoredUtms();
       const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const utms = {
-        source: urlParams?.get('utm_source') || stored.utmSource || null,
-        subSource: urlParams?.get('utm_sub_source') || stored.utmSubSource || null,
+        source: urlParams?.get("utm_source") || stored.utmSource || null,
+        subSource: urlParams?.get("utm_sub_source") || stored.utmSubSource || null,
       };
 
-      // Convert form data to lead format
-      const leadData = convertToLeadData({
-        personalInfo: formData.personalInfo,
-        physicalInfo: formData.physicalInfo,
-        goalSelection: formData.goalSelection,
-        dietSelection: formData.dietSelection,
-        foodPreferenceSelection: formData.foodPreferenceSelection,
-        activityAndDuration: formData.activityAndDuration,
-        planSelection: data, // Use the newly submitted data
-      }, utms);
+      const leadData = convertToLeadData(currentData, utms);
 
-      console.log('🔄 Converted lead data:', leadData);
-      console.log('🍽️ Selected meals:', leadData.plan);
-
-      // Submit to Google Sheets (non-blocking)
-      const success = await submitLead({
+      return {
+        sessionId: sid,
         ...leadData,
-        status: 'lead',
-        lastStepCompleted: 7,
-        checkoutVisited: false,
-      });
-
-      if (success) {
-        console.log('✅ Lead submitted successfully');
-        toast.success('Your information has been saved', {
-          description: 'Proceeding to checkout...',
-        });
-      } else {
-        console.warn('⚠️ Lead submission returned false (but allowing user to continue)');
-      }
-
-      // Save form data to localStorage for later subscription tracking
-      const completeFormData = {
-        personalInfo: formData.personalInfo,
-        physicalInfo: formData.physicalInfo,
-        goalSelection: formData.goalSelection,
-        dietSelection: formData.dietSelection,
-        foodPreferenceSelection: formData.foodPreferenceSelection,
-        activityAndDuration: formData.activityAndDuration,
-        planSelection: data,
+        address: currentData.billingDetails?.address || undefined,
+        city: currentData.billingDetails?.city || undefined,
+        state: currentData.billingDetails?.state || undefined,
+        pinCode: currentData.billingDetails?.pinCode || currentData.billingDetails?.zipCode || undefined,
+        status: "lead",
+        lastStepCompleted: stepNum,
+        totalSteps: 9,
+        formStatus: (isCompleted ? "completed" : (stepNum >= 8 ? "completed" : "partial")) as "completed" | "partial",
+        checkoutVisited: isCheckout,
       };
-      localStorage.setItem('subscriptionFormData', JSON.stringify(completeFormData));
-      console.log('💾 Form data saved to localStorage for payment tracking');
-      
-    } catch (error) {
-      console.error('❌ Failed to submit lead:', error);
-      // Don't block user from proceeding even if tracking fails
+    },
+    []
+  );
+
+  // Helper to sync lead progress directly with Supabase in real-time
+  const syncStepToSupabase = useCallback(
+    async (stepNum: number, override?: Record<string, any>, isCheckout: boolean = false, isCompleted: boolean = false) => {
+      try {
+        const payload = buildLeadPayload(stepNum, override, isCheckout, isCompleted);
+        await submitLead(payload);
+        console.log(`✅ Synced step ${stepNum} to Supabase`);
+      } catch (err) {
+        console.warn(`Step ${stepNum} sync notice:`, err);
+      }
+    },
+    [buildLeadPayload, submitLead]
+  );
+
+  // Save when the visitor leaves the page after filling something
+  useEffect(() => {
+    const handleLeave = () => {
+      const sid = typeof window !== "undefined" ? sessionStorage.getItem("bhookr_subscribe_session_id") : "";
+      if (!sid) return;
+
+      const current = formDataRef.current;
+      const hasAnyData = Boolean(
+        current.personalInfo?.fullName ||
+        current.personalInfo?.email ||
+        current.personalInfo?.phoneNumber ||
+        current.physicalInfo?.gender ||
+        current.goalSelection?.goal ||
+        current.dietSelection?.dietType
+      );
+      if (!hasAnyData) return;
+
+      const payload = JSON.stringify(
+        buildLeadPayload(currentStepRef.current + 1, {}, currentStepRef.current >= 7)
+      );
+
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: "application/json" });
+        navigator.sendBeacon("/api/crm/leads/submit", blob);
+      }
+    };
+
+    window.addEventListener("pagehide", handleLeave);
+    window.addEventListener("beforeunload", handleLeave);
+    return () => {
+      window.removeEventListener("pagehide", handleLeave);
+      window.removeEventListener("beforeunload", handleLeave);
+    };
+  }, [buildLeadPayload]);
+
+  // Automatically mark checkout as visited when reaching billing/review
+  useEffect(() => {
+    if (currentStep >= 7) {
+      syncStepToSupabase(currentStep + 1, {}, true);
     }
+  }, [currentStep, syncStepToSupabase]);
+
+  const handlePlanSelectionNext = async (data: PlanSelectionFormData) => {
+    updateFormData({ planSelection: data });
     
+    console.log('📝 Step 7 completed - Syncing lead to Supabase...');
+    syncStepToSupabase(7, { planSelection: data });
+
+    // Save form data to localStorage for later subscription tracking
+    const completeFormData = {
+      personalInfo: formData.personalInfo,
+      physicalInfo: formData.physicalInfo,
+      goalSelection: formData.goalSelection,
+      dietSelection: formData.dietSelection,
+      foodPreferenceSelection: formData.foodPreferenceSelection,
+      activityAndDuration: formData.activityAndDuration,
+      planSelection: data,
+    };
+    localStorage.setItem('subscriptionFormData', JSON.stringify(completeFormData));
+    
+    toast.success('Your plan selection has been saved');
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleActivityDurationNext = (data: ActivityAndDurationFormData) => {
     updateFormData({ activityAndDuration: data });
+    syncStepToSupabase(6, { activityAndDuration: data });
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -164,26 +228,7 @@ export default function SubscriptionPage() {
   const handlePersonalInfoNext = async (data: PersonalInfoFormData) => {
     const updatedData = user ? { ...data, userId: user.uid } : data;
     updateFormData({ personalInfo: updatedData });
-
-    // Submit Step 1 lead instantly with UTM parameters
-    try {
-      const stored = getStoredUtms();
-      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-      const utms = {
-        source: urlParams?.get('utm_source') || stored.utmSource || null,
-        subSource: urlParams?.get('utm_sub_source') || stored.utmSubSource || null,
-      };
-
-      await submitLead({
-        ...convertToLeadData({ personalInfo: updatedData }, utms),
-        status: 'lead',
-        lastStepCompleted: 1,
-        checkoutVisited: false,
-      });
-      console.log('✅ Step 1 lead captured successfully with UTMs:', utms);
-    } catch (error) {
-      console.error('❌ Step 1 lead save failed (non-blocking):', error);
-    }
+    syncStepToSupabase(1, { personalInfo: updatedData });
 
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -191,24 +236,28 @@ export default function SubscriptionPage() {
 
   const handlePhysicalInfoNext = (data: PhysicalInfoFormData) => {
     updateFormData({ physicalInfo: data });
+    syncStepToSupabase(2, { physicalInfo: data });
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleGoalNext = (data: GoalSelectionFormData) => {
     updateFormData({ goalSelection: data });
+    syncStepToSupabase(3, { goalSelection: data });
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDietNext = (data: DietSelectionFormData) => {
     updateFormData({ dietSelection: data });
+    syncStepToSupabase(4, { dietSelection: data });
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleFoodPreferenceNext = (data: FoodPreferenceFormData) => {
     updateFormData({ foodPreferenceSelection: data });
+    syncStepToSupabase(5, { foodPreferenceSelection: data });
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -224,6 +273,7 @@ export default function SubscriptionPage() {
     
     // Update form data
     updateFormData({ billingDetails: data });
+    syncStepToSupabase(8, { billingDetails: data }, true);
     setCurrentStep(currentStep + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -752,6 +802,16 @@ export default function SubscriptionPage() {
               });
             }
 
+            // Sync completed status to Supabase and Google Sheet
+            try {
+              await syncStepToSupabase(9, {}, true, true);
+              if (typeof window !== "undefined") {
+                sessionStorage.removeItem("bhookr_subscribe_session_id");
+              }
+            } catch (syncErr) {
+              console.warn("Completed lead sync warning:", syncErr);
+            }
+
             // Clear form data after successful subscription
             resetForm();
 
@@ -971,6 +1031,9 @@ export default function SubscriptionPage() {
             </h1>
             <p className="text-gray-600 dark:text-gray-300 text-lg">
               Step {currentStep + 1} of {totalSteps}: {STEP_TITLES[currentStep]}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">
+              We save your details as you go, so we can help you if you get stuck.
             </p>
           </motion.div>
 

@@ -304,7 +304,7 @@ export default function CrmAnalyticsPage() {
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Reflects live sheet data + your local pipeline status changes · last updated{" "}
+              Reflects live Supabase data + pipeline status changes · last updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -363,7 +363,7 @@ export default function CrmAnalyticsPage() {
           <button
             onClick={() =>
               refreshMutation.mutate(undefined, {
-                onSuccess: () => toast.success("Data refreshed from Google Sheets"),
+                onSuccess: () => toast.success("Data refreshed from Supabase"),
                 onError: () => toast.error("Refresh failed — using cached data"),
               })
             }
@@ -390,7 +390,7 @@ export default function CrmAnalyticsPage() {
 
       {loading ? (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-sm text-gray-500 dark:border-gray-800 dark:bg-gray-900">
-          Loading all data from Google Sheets…
+          Loading CRM data from Supabase…
         </div>
       ) : (
         <>
@@ -584,7 +584,7 @@ export default function CrmAnalyticsPage() {
 
           <p className="text-xs text-gray-400">
             Pipeline counts reflect status changes saved in this browser. Revenue
-            and form-funnel numbers come live from the Google Sheets.
+            and form-funnel numbers come live from Supabase.
           </p>
         </>
       )}

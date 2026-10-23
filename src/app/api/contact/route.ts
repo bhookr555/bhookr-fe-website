@@ -29,17 +29,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = contactSchema.parse(body);
 
-    // Production: Implement transactional email service (SendGrid, AWS SES, Mailgun)
-    // Example integration:
-    // await sendEmail({
-    //   to: "support@bhookr.com",
-    //   from: validatedData.email,
-    //   subject: validatedData.subject,
-    //   text: validatedData.message,
-    // });
+    // Store contact inquiries directly in Supabase leads table so they appear in CRM
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabase/server');
+      const cleanEmail = validatedData.email.trim().toLowerCase();
+      const rawPhone = (body as any)?.phone || (body as any)?.phoneNumber;
+      const phoneDigits = rawPhone ? String(rawPhone).replace(/\D/g, "") : null;
 
-    // Production: Store contact messages in Firestore for tracking and admin review
-    // await createContactMessage(validatedData);
+      await supabaseAdmin.from('leads').upsert(
+        {
+          name: validatedData.name.trim(),
+          email: cleanEmail,
+          phone_number: phoneDigits || null,
+          goal: validatedData.subject || "Contact Form Inquiry",
+          food_love: validatedData.message || null,
+          status: "new",
+          lead_source: "website",
+          last_step_completed: 1,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: "email,lead_source" }
+      );
+    } catch (dbErr) {
+      console.warn('[Contact API] Failed to save inquiry to Supabase leads:', dbErr);
+    }
 
     return NextResponse.json(
       { message: "Message sent successfully" },

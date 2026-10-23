@@ -29,6 +29,7 @@ import {
   type PipelineStatus,
 } from "@/lib/crm/pipeline";
 import { NoteModal } from "@/components/crm/note-modal";
+import { EarlierFormsPanel } from "@/components/crm/earlier-forms-panel";
 import { useDashboardData, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
 import { useDebounce } from "@/hooks/use-debounce";
 import { toast } from "sonner";
@@ -56,6 +57,37 @@ function renderCell(row: LeadRow, key: keyof LeadRow): React.ReactNode {
 
   if (key === "timestamp" || key === "subscriptionStartDate") {
     return formatTimestamp(value as string | number);
+  }
+
+  if (key === "lastStepCompleted") {
+    const isCompleted =
+      row.formStatus === "completed" ||
+      Number(row.lastStepCompleted) >= (row.totalSteps || 9);
+    return isCompleted ? (
+      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+        Completed
+      </span>
+    ) : (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        Step {row.lastStepCompleted || 1} of {row.totalSteps || 9}
+      </span>
+    );
+  }
+
+  if (key === "isRepeat") {
+    return row.isRepeat ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800 dark:bg-red-950/40 dark:text-red-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
+        Yes
+      </span>
+    ) : (
+      <span className="text-gray-400 text-xs">No</span>
+    );
+  }
+
+  if (key === "address") {
+    const full = [row.address, row.city, row.state, row.pinCode].filter(Boolean).join(", ");
+    return full || <span className="text-gray-300 dark:text-gray-600">—</span>;
   }
 
   if (key === "checkoutVisited") {
@@ -122,8 +154,9 @@ function renderCell(row: LeadRow, key: keyof LeadRow): React.ReactNode {
 export default function CrmLeadsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PipelineStatus | "all">("all");
-  const [step7Only, setStep7Only] = useState(false);
+  const [completedOnly, setCompletedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
+  const [earlierFormsLead, setEarlierFormsLead] = useState<LeadRow | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -186,7 +219,10 @@ export default function CrmLeadsPage() {
 
   const filtered = useMemo(() => {
     const matching = annotated.filter(({ row, status }) => {
-      if (step7Only && Number(row.lastStepCompleted) < 7) return false;
+      if (completedOnly) {
+        const isCompleted = row.formStatus === "completed" || Number(row.lastStepCompleted) >= (row.totalSteps || 9);
+        if (!isCompleted) return false;
+      }
       if (statusFilter !== "all" && status !== statusFilter) return false;
       if (debouncedSearch.trim()) {
         const haystack = [row.name, row.email, row.phoneNumber]
@@ -211,7 +247,7 @@ export default function CrmLeadsPage() {
       );
     }
     return sorted;
-  }, [annotated, debouncedSearch, statusFilter, step7Only, sortBy]);
+  }, [annotated, debouncedSearch, statusFilter, completedOnly, sortBy]);
 
   const verifiedCount = annotated.filter((a) => a.source === "online").length;
   const localCount = annotated.filter((a) => a.source === "local").length;
@@ -317,11 +353,11 @@ export default function CrmLeadsPage() {
         <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
           <input
             type="checkbox"
-            checked={step7Only}
-            onChange={(e) => setStep7Only(e.target.checked)}
+            checked={completedOnly}
+            onChange={(e) => setCompletedOnly(e.target.checked)}
             className="h-4 w-4 rounded border-gray-300 text-[#E31E24] focus:ring-[#E31E24]"
           />
-          Step 7 only
+          Completed only
         </label>
       </div>
 
@@ -367,7 +403,7 @@ export default function CrmLeadsPage() {
                     className="px-3 py-12 text-center text-sm text-gray-500"
                   >
                     {rows.length === 0
-                      ? "No leads in the sheet yet."
+                      ? "No leads in Supabase yet."
                       : "No leads match your filters."}
                   </td>
                 </tr>
@@ -405,14 +441,53 @@ export default function CrmLeadsPage() {
                           <div className="mt-0.5 text-[10px] text-gray-400">local</div>
                         )}
                       </td>
-                      {LEAD_COLUMNS.map((col) => (
-                        <td
-                          key={col.key}
-                          className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200"
-                        >
-                          {renderCell(row, col.key)}
-                        </td>
-                      ))}
+                      {LEAD_COLUMNS.map((col) => {
+                        if (col.key === "name") {
+                          return (
+                            <td
+                              key={col.key}
+                              className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                {row.isRepeat && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEarlierFormsLead(row);
+                                    }}
+                                    title="Filled before — click to see earlier forms"
+                                    className="group inline-flex items-center"
+                                  >
+                                    <span className="relative flex h-2.5 w-2.5">
+                                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600 ring-2 ring-white dark:ring-gray-900" />
+                                    </span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEarlierFormsLead(row);
+                                  }}
+                                  className="font-medium text-gray-900 hover:text-[#E31E24] hover:underline dark:text-white dark:hover:text-[#ff4d4f] text-left"
+                                >
+                                  {row.name || <span className="text-gray-300 dark:text-gray-600">—</span>}
+                                </button>
+                              </div>
+                            </td>
+                          );
+                        }
+                        return (
+                          <td
+                            key={col.key}
+                            className="whitespace-nowrap border-b border-gray-100 px-3 py-2 text-gray-700 dark:border-gray-800 dark:text-gray-200"
+                          >
+                            {renderCell(row, col.key)}
+                          </td>
+                        );
+                      })}
                       <td className="sticky right-0 border-b border-gray-100 bg-white px-3 py-2 text-right dark:border-gray-800 dark:bg-gray-900">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -478,6 +553,13 @@ export default function CrmLeadsPage() {
           onClose={() => setNoteModalLead(null)}
         />
       )}
+
+      <EarlierFormsPanel
+        open={Boolean(earlierFormsLead)}
+        onClose={() => setEarlierFormsLead(null)}
+        lead={earlierFormsLead}
+        allLeads={rows}
+      />
     </div>
   );
 }

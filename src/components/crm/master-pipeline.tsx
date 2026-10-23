@@ -58,6 +58,7 @@ import {
 } from "@/lib/crm/pipeline";
 import { getCurrentRole, type CrmRole } from "@/lib/crm/auth";
 import { NoteModal } from "@/components/crm/note-modal";
+import { EarlierFormsPanel } from "@/components/crm/earlier-forms-panel";
 import { type AnnotatedLead } from "@/lib/crm/report-generator";
 import { PipelineTableSkeleton } from "@/components/crm/skeletons";
 import {
@@ -312,6 +313,7 @@ export function MasterPipeline() {
     notes?: string;
     status?: PipelineStatus;
   } | null>(null);
+  const [earlierFormsLead, setEarlierFormsLead] = useState<LeadRow | null>(null);
 
   // Debounce search: only run filter pass 300ms after typing stops
   const debouncedSearch = useDebounce(search, 300);
@@ -954,12 +956,12 @@ export function MasterPipeline() {
               <tr>
                 <Th>#</Th>
                 <Th>Name</Th>
-                <Th>Contact</Th>
-                <Th>Plan interest</Th>
-                <Th>Ad / Source</Th>
-                <Th>Captured</Th>
+                <Th>Phone & Email</Th>
+                <Th>Plan</Th>
+                <Th>Source</Th>
+                <Th>Filled on</Th>
                 <Th>Status</Th>
-                <Th align="right">View</Th>
+                <Th align="right">Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -1017,36 +1019,49 @@ export function MasterPipeline() {
                     >
                       <Td className="text-xs text-gray-400">{idx + 1}</Td>
                       <Td>
-                        <div className="flex flex-col gap-0.5">
-                          <Link
-                            href={href}
-                            className="font-medium text-gray-900 hover:text-[#E31E24] hover:underline dark:text-white"
-                          >
-                            {a.lead.name || "—"}
-                          </Link>
-                          {(() => {
-                            const ml = a.lead as MergedLeadRow;
-                            const sources = ml.allSources ?? [];
-                            if (sources.length > 1) {
-                              return (
-                                <span className="inline-flex w-fit flex-wrap items-center gap-1 rounded-md bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
-                                  🔀 {sources.join(" + ")}
-                                </span>
-                              );
-                            }
-                            if (a.lead.leadSource === "client_form") {
-                              return (
-                                <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-                                  📑 Client Form
-                                </span>
-                              );
-                            }
-                            return (
-                              <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                                🌐 Website Lead
+                        <div className="flex flex-col gap-1 items-start">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {a.lead.isRepeat && (
+                              <button
+                                type="button"
+                                onClick={() => setEarlierFormsLead(a.lead)}
+                                className="inline-flex items-center justify-center cursor-pointer"
+                                title="Filled before (Click to view earlier forms from this person)"
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full bg-red-600 ring-3 ring-red-200 dark:ring-red-950/80 shrink-0" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setEarlierFormsLead(a.lead)}
+                              className="font-semibold text-gray-900 hover:text-[#E31E24] hover:underline dark:text-white text-left cursor-pointer"
+                              title="Click to view all forms from this person"
+                            >
+                              {a.lead.name || "—"}
+                            </button>
+                          </div>
+
+                          {/* How far they got badge */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {a.lead.formStatus === "completed" || Number(a.lead.lastStepCompleted) >= 8 || a.lead.checkoutVisited ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-semibold">
+                                Completed
                               </span>
-                            );
-                          })()}
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-800 border border-amber-200/60 dark:bg-amber-950/40 dark:text-amber-300 px-2 py-0.5 text-[10px] font-medium">
+                                Step {a.lead.lastStepCompleted || 1} of {a.lead.totalSteps || 9}
+                              </span>
+                            )}
+                            {a.lead.isRepeat && (
+                              <button
+                                type="button"
+                                onClick={() => setEarlierFormsLead(a.lead)}
+                                className="text-[10px] font-medium text-red-600 hover:underline dark:text-red-400 cursor-pointer"
+                              >
+                                Filled before
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </Td>
                       <Td>
@@ -1194,6 +1209,13 @@ export function MasterPipeline() {
           initialMode={reportInitialMode}
         />
       )}
+
+      <EarlierFormsPanel
+        open={Boolean(earlierFormsLead)}
+        onClose={() => setEarlierFormsLead(null)}
+        lead={earlierFormsLead}
+        allLeads={leads}
+      />
     </section>
   );
 }

@@ -201,9 +201,9 @@ export default function CrmActiveCustomersDashboard() {
     try {
       await fetch(`/api/crm/customers?refresh=true&t=${Date.now()}`, { credentials: "include" });
       await queryClient.invalidateQueries({ queryKey: ["crm", "active-customers-sheet-v9"] });
-      toast.success("Live synced with Google Sheet");
+      toast.success("Synced with Supabase");
     } catch {
-      toast.error("Failed to refresh live sheet");
+      toast.error("Failed to refresh customers");
     } finally {
       setIsRefreshing(false);
     }
@@ -294,7 +294,7 @@ export default function CrmActiveCustomersDashboard() {
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Live synced with Google Sheet · auto-updates every 5s · last synced{" "}
+              Live synced with Supabase · Realtime active · last synced{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </p>
           )}
@@ -312,7 +312,7 @@ export default function CrmActiveCustomersDashboard() {
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            Sync Live Sheet
+            Refresh Customers
           </button>
         </div>
       </div>
@@ -421,7 +421,7 @@ export default function CrmActiveCustomersDashboard() {
                 <tr><td colSpan={15} className="p-0"><PipelineTableSkeleton rows={6} /></td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={15} className="px-3 py-12 text-center text-sm text-gray-500">
-                  {customers.length === 0 ? "No active sheet orders found." : "No entries match your filters."}
+                  {customers.length === 0 ? "No active customers found." : "No entries match your filters."}
                 </td></tr>
               ) : (
                 filtered.map((c, idx) => {

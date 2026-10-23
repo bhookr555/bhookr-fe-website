@@ -363,6 +363,59 @@ export async function POST(request: NextRequest) {
             previousStatus: 'pending',
             newStatus: 'active',
           });
+          // Direct server-side sync to Supabase subscriptions table
+          try {
+            const { supabaseAdmin } = await import('@/lib/supabase/server');
+            const planMeals = subData?.planSelection?.selectedMeals || subData?.plan || [];
+            const planStr = Array.isArray(planMeals) ? planMeals.join(', ') : String(planMeals || '');
+            const customerEmail = String(subData?.userEmail || user.email || '').trim().toLowerCase();
+
+            await supabaseAdmin.from('subscriptions').upsert(
+              {
+                order_id: String(validatedData.orderId),
+                transaction_id: String(validatedData.razorpayPaymentId),
+                name: String(subData?.personalInfo?.fullName || user.displayName || 'Subscriber'),
+                email: customerEmail,
+                phone_number: subData?.personalInfo?.phoneNumber || null,
+                age: subData?.personalInfo?.age ? Number(subData.personalInfo.age) : null,
+                gender: subData?.physicalInfo?.gender || null,
+                height: subData?.physicalInfo?.height ? Number(subData.physicalInfo.height) : null,
+                weight: subData?.physicalInfo?.weight ? Number(subData.physicalInfo.weight) : null,
+                goal: subData?.goalSelection?.goal || null,
+                diet: subData?.dietSelection?.dietType || null,
+                food_preference: subData?.foodPreferenceSelection?.foodPreference || null,
+                physical_state: subData?.activityAndDuration?.activityLevel || null,
+                subscription_type: subData?.activityAndDuration?.duration || subData?.planType || null,
+                plan: planStr || null,
+                subscription_start_date: subData?.startDate ? new Date(subData.startDate).toISOString().split('T')[0] : null,
+                subscription_end_date: subData?.endDate ? new Date(subData.endDate).toISOString().split('T')[0] : null,
+                delivery_full_name: subData?.billingDetails?.fullName || subData?.personalInfo?.fullName || null,
+                delivery_phone: subData?.billingDetails?.phone || subData?.personalInfo?.phoneNumber || null,
+                delivery_address: subData?.billingDetails?.address || null,
+                delivery_city: subData?.billingDetails?.city || null,
+                delivery_state: subData?.billingDetails?.state || null,
+                delivery_pin_code: subData?.billingDetails?.pinCode || null,
+                status: 'active',
+                payment_status: 'success',
+                amount_paid: Number(paymentDetails.amount) / 100,
+                payment_method: paymentDetails.method || 'online',
+                payment_timestamp: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              { onConflict: 'order_id' }
+            );
+
+            // Convert lead status in Supabase
+            if (customerEmail) {
+              await supabaseAdmin
+                .from('leads')
+                .update({ status: 'converted', updated_at: new Date().toISOString() })
+                .ilike('email', customerEmail);
+            }
+            logger.info('[API] Supabase subscription & lead conversion synced successfully', { orderId: validatedData.orderId });
+          } catch (sbErr) {
+            logger.warn('[API] Supabase subscription sync warning', { error: String(sbErr) });
+          }
         } else {
           logger.warn('[API] Subscription not activated - wrong status', {
             subscriptionId: subscriptionDoc.id,

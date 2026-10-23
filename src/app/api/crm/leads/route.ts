@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 
 function mapSupabaseLeadToLeadRow(row: Record<string, any>): LeadRow {
   return {
+    id: row.id,
+    sessionId: row.session_id,
     timestamp: row.created_at,
     name: row.name || "Lead",
     email: row.email || "",
@@ -24,6 +26,14 @@ function mapSupabaseLeadToLeadRow(row: Record<string, any>): LeadRow {
     subscriptionStartDate: row.subscription_start_date || "",
     status: row.status || "lead",
     lastStepCompleted: row.last_step_completed ?? 0,
+    totalSteps: row.total_steps ?? 9,
+    formStatus: row.form_status || (row.last_step_completed >= 8 || row.checkout_visited ? "completed" : "partial"),
+    isRepeat: Boolean(row.is_repeat),
+    firstLeadId: row.first_lead_id || null,
+    address: row.address || "",
+    city: row.city || "",
+    state: row.state || "",
+    pinCode: row.pin_code || "",
     checkoutVisited: Boolean(row.checkout_visited),
     utmSource: row.utm_source || "",
     utmSubSource: row.utm_sub_source || "",

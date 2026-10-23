@@ -202,6 +202,22 @@ export function useDashboardData() {
           queryClient.invalidateQueries({ queryKey: CRM_QUERY_KEYS.dashboard });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        (payload) => {
+          console.log("[useDashboardData] Realtime orders event:", payload.eventType);
+          queryClient.invalidateQueries({ queryKey: CRM_QUERY_KEYS.dashboard });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "customers" },
+        (payload) => {
+          console.log("[useDashboardData] Realtime customers event:", payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ["crm", "active-customers-sheet-v9"] });
+        }
+      )
       .subscribe((status, err) => {
         if (err) {
           console.warn("[useDashboardData] Realtime subscription notice:", err.message);

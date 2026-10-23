@@ -210,15 +210,7 @@ export async function createSubscriptionWithRollback(
     // Fire and forget - don't await to prevent blocking subscription creation
     (async () => {
       try {
-        // Check if Google Sheets URLs are configured
-        const subscriptionsSheetUrl = process.env.NEXT_PUBLIC_SUBSCRIPTIONS_SHEET_URL;
-        
-        if (!subscriptionsSheetUrl || subscriptionsSheetUrl.includes('YOUR_')) {
-          logger.info('[Saga] Google Sheets not configured, skipping sync', { transactionId });
-          return;
-        }
-        
-        logger.info('[Saga] Step 2: Syncing to Google Sheets (background)', { transactionId });
+        logger.info('[Saga] Step 2: Syncing subscription to database (background)', { transactionId });
         await recordTransaction(transactionId, 'google_sheets', {
           orderId,
           email: subscriptionData.userEmail,

@@ -61,6 +61,7 @@ export interface BillingDetails {
   city: string;
   state: string;
   zipCode: string;
+  pinCode?: string;
   country: string;
 }
 

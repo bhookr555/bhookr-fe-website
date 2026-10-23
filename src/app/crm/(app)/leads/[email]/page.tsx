@@ -40,6 +40,7 @@ import {
 } from "@/lib/crm/pipeline";
 import { ConvertModal } from "@/components/crm/convert-modal";
 import { NoteModal } from "@/components/crm/note-modal";
+import { EarlierFormsPanel } from "@/components/crm/earlier-forms-panel";
 import { useDashboardData, usePipelineData, useRefreshDashboard } from "@/hooks/crm/use-dashboard-data";
 import { toast } from "sonner";
 
@@ -114,6 +115,7 @@ export default function LeadDetailPage() {
 
   const [convertOpen, setConvertOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [earlierFormsOpen, setEarlierFormsOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Derive lead & subscriptions from shared React Query cache
@@ -218,7 +220,7 @@ export default function LeadDetailPage() {
           </h2>
           <p className="mt-1 text-sm text-amber-800 dark:text-amber-300/80">
             No lead exists with email <strong>{email}</strong>. It may have been
-            removed from the sheet, or the URL is wrong.
+            removed from the database, or the URL is wrong.
           </p>
         </div>
       </div>
@@ -246,6 +248,16 @@ export default function LeadDetailPage() {
               <span>{effMeta.icon}</span>
               {effMeta.label}
             </span>
+            {lead.isRepeat && (
+              <button
+                type="button"
+                onClick={() => setEarlierFormsOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-200 transition dark:bg-red-950/60 dark:text-red-300"
+              >
+                <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                Filled before (view earlier forms)
+              </button>
+            )}
             {lead.leadSource === "client_form" ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800 dark:bg-purple-950/50 dark:text-purple-300">
                 📑 Client Form
@@ -257,8 +269,12 @@ export default function LeadDetailPage() {
             )}
           </div>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Lead since {formatTimestamp(lead.timestamp)} · Step{" "}
-            {String(lead.lastStepCompleted ?? "—")} completed
+            Filled on {formatTimestamp(lead.timestamp)} · How far they got:{" "}
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {lead.formStatus === "completed" || Number(lead.lastStepCompleted) >= (lead.totalSteps || 9)
+                ? "Completed"
+                : `Step ${lead.lastStepCompleted || 1} of ${lead.totalSteps || 9}`}
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -319,7 +335,7 @@ export default function LeadDetailPage() {
               </h3>
               <p className="mt-1 text-sm text-emerald-800 dark:text-emerald-300/90">
                 This lead has a successful payment on record in the
-                Subscriptions sheet — no manual action needed.
+                Subscriptions database — no manual action needed.
               </p>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Stat label="Plan" value={humanize(String(verifiedSub.subscriptionType ?? ""))} />
@@ -354,8 +370,7 @@ export default function LeadDetailPage() {
                 Marked converted manually (database record)
               </h3>
               <p className="mt-1 text-sm text-amber-800 dark:text-amber-300/90">
-                This mark is saved in your central CRM database. It does not
-                exist in the Subscriptions sheet yet. Use the website&apos;s payment flow for a real payment conversion.
+                This mark is saved in your central CRM database. Use the website&apos;s payment flow for a real payment conversion.
               </p>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Stat label="Plan" value={humanize(pipelineEntry.planType ?? "") || "—"} />
@@ -422,6 +437,12 @@ export default function LeadDetailPage() {
         <Field icon={Mail} label="Email" value={lead.email} />
         <Field icon={Phone} label="Phone" value={String(lead.phoneNumber ?? "")} />
         <Field icon={Calendar} label="Captured" value={formatTimestamp(lead.timestamp)} />
+        {(lead.address || lead.city || lead.pinCode) && (
+          <Field
+            label="Address"
+            value={[lead.address, lead.city, lead.state, lead.pinCode].filter(Boolean).join(", ")}
+          />
+        )}
       </SectionCard>
 
       <SectionCard title="Profile">
@@ -460,7 +481,7 @@ export default function LeadDetailPage() {
           }
         />
         <Field label="Last step completed" value={String(lead.lastStepCompleted ?? "")} />
-        <Field label="Sheet status" value={humanize(lead.status)} />
+        <Field label="Database status" value={humanize(lead.status)} />
       </SectionCard>
 
       {/* Telecaller Notes Card */}
@@ -493,8 +514,7 @@ export default function LeadDetailPage() {
       </section>
 
       <p className="text-xs text-gray-400">
-        Read-only view of the sheet data. The Google Sheets are not modified by
-        anything on this page. Pipeline status + conversion marks + notes are saved in the central CRM database.
+        Lead data sourced directly from Supabase database. Pipeline status, conversion marks, and notes are synced in real-time.
       </p>
 
       {convertOpen && (
@@ -517,6 +537,13 @@ export default function LeadDetailPage() {
           onClose={() => setNoteOpen(false)}
         />
       )}
+
+      <EarlierFormsPanel
+        open={earlierFormsOpen}
+        onClose={() => setEarlierFormsOpen(false)}
+        lead={lead}
+        allLeads={allLeads}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@
 
 // Types for form data
 export interface LeadData {
+  sessionId?: string;
   name: string;
   email: string;
   phoneNumber: string;
@@ -21,6 +22,12 @@ export interface LeadData {
   subscriptionStartDate: string;
   status?: string;
   lastStepCompleted?: number;
+  totalSteps?: number;
+  formStatus?: 'partial' | 'completed';
+  address?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
   checkoutVisited?: boolean;
   utmSource?: string;
   utmSubSource?: string;
@@ -87,14 +94,13 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
       ...data,
       plan: Array.isArray(data.plan) ? data.plan.join(', ') : data.plan,
       status: data.status || 'lead',
-      lastStepCompleted: data.lastStepCompleted || 7,
+      lastStepCompleted: data.lastStepCompleted !== undefined ? data.lastStepCompleted : 1,
+      totalSteps: data.totalSteps || 9,
+      formStatus: data.formStatus || 'partial',
       checkoutVisited: data.checkoutVisited || false,
     };
 
-    console.log('Submitting lead (dual-mode) to Google Sheets:', preparedData.email);
-
-    // Always use Sheet2 URL directly - bypasses any stale Vercel env var
-    const leadsSheetUrl = "https://script.google.com/macros/s/AKfycbzrO0fki7Vcv3G06yt8wzz7Pta-f377k-nFr2gEob17jc65qd6vlkFCf9Ng_VpbCvxg/exec";
+    console.log('Submitting lead to Supabase database:', preparedData.email);
 
     // Single submission via server relay to Supabase PostgreSQL (canonical source of truth)
     const res = await fetch('/api/crm/leads/submit', {

@@ -136,7 +136,7 @@ export default function CrmLocationsPage() {
           </h1>
           {!loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              From Bhookr Orders sheet · {clusters.length} neighbourhood
+              From Bhookr Orders database · {clusters.length} neighbourhood
               {clusters.length === 1 ? "" : "s"} · last updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
@@ -220,7 +220,7 @@ export default function CrmLocationsPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
           ⚠️ {ordersMissingPincode} order
           {ordersMissingPincode === 1 ? " is" : "s are"} missing a pincode in the
-          sheet — those aren&apos;t shown on the map.
+          database — those aren&apos;t shown on the map.
         </div>
       )}
 
@@ -307,7 +307,7 @@ export default function CrmLocationsPage() {
 
       <p className="text-xs text-gray-400">
         Pins are placed at the centre of each pincode area (approximate).
-        Subscriptions in your sheet currently have empty delivery addresses, so
+        Subscriptions in your database currently have empty delivery addresses, so
         only Order-customer locations appear here. Once subscription delivery
         fields are filled, those will appear too.
       </p>

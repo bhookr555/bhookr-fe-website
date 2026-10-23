@@ -30,9 +30,10 @@ create table if not exists leads (
   updated_at              timestamptz not null default now(),
 
   -- Identity
-  name                    text not null,
-  email                   text not null,
+  name                    text,
+  email                   text,
   phone_number            text,
+  session_id              text,
 
   -- Profile
   age                     int,
@@ -45,24 +46,38 @@ create table if not exists leads (
   physical_state          text,
   food_love               text,
 
+  -- Address / Delivery details
+  address                 text,
+  city                    text,
+  state                   text,
+  pin_code                text,
+
   -- Subscription intent
   subscription_type       text,
   plan                    text,
   subscription_start_date date,
 
-  -- Tracking & Funnel
+  -- Tracking, Funnel & Repeat Submissions
   status                  text default 'lead',
   last_step_completed     int default 0,
+  total_steps             int default 9,
+  form_status             text default 'partial', -- 'partial' | 'completed'
+  is_repeat               boolean default false,
+  first_lead_id           uuid,
   checkout_visited        boolean default false,
   utm_source              text,
   utm_sub_source          text,
   lead_source             text default 'website', -- 'website' | 'client_form'
 
   -- Constraints
-  constraint leads_email_source_unique unique (email, lead_source)
+  constraint leads_session_id_unique unique (session_id)
 );
 
 create index if not exists idx_leads_created_at on leads (created_at desc);
+create index if not exists idx_leads_session_id on leads (session_id);
+create index if not exists idx_leads_first_lead_id on leads (first_lead_id);
+create index if not exists idx_leads_is_repeat on leads (is_repeat);
+create index if not exists idx_leads_form_status on leads (form_status);
 create index if not exists idx_leads_email on leads (email);
 create index if not exists idx_leads_phone on leads (phone_number);
 create index if not exists idx_leads_status on leads (status);

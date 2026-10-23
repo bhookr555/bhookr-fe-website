@@ -160,7 +160,7 @@ export default function CrmSubscriptionsPage() {
           </h1>
           {lastUpdated && !loading && (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Live from Google Sheet · last updated{" "}
+              Live from Supabase · last updated{" "}
               {lastUpdated.toLocaleTimeString("en-IN", {
                 hour: "2-digit", minute: "2-digit", second: "2-digit",
               })}

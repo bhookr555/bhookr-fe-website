@@ -190,7 +190,28 @@ export async function POST(req: NextRequest) {
     // merge: true preserves all existing fields (notes, noteHistory, etc.)
     await docRef.set(payload, { merge: true });
 
-    // Asynchronously forward status update to Google Sheets Apps Script so Column P (status) stays updated
+    // Directly update Supabase leads table so status change is recorded in PostgreSQL
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabase/server');
+      const targetEmail = key.includes("@") ? key : extras?.email;
+      const targetPhone = extras?.phone || (key.startsWith("phone_") ? key.replace("phone_", "") : "");
+
+      if (targetEmail) {
+        await supabaseAdmin
+          .from("leads")
+          .update({ status: status, updated_at: new Date().toISOString() })
+          .ilike("email", targetEmail);
+      } else if (targetPhone) {
+        await supabaseAdmin
+          .from("leads")
+          .update({ status: status, updated_at: new Date().toISOString() })
+          .ilike("phone_number", `%${targetPhone}%`);
+      }
+    } catch (sbErr) {
+      console.warn("[pipeline API] Supabase status update warning:", sbErr);
+    }
+
+    // Optional: Asynchronously forward status update to Google Sheets Apps Script if configured
     const leadsUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
     if (leadsUrl && status) {
       const sheetPayload = {

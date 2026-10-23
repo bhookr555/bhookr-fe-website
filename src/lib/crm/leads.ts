@@ -4,6 +4,8 @@
  */
 
 export interface LeadRow {
+  id?: string;
+  sessionId?: string;
   timestamp: string | number;
   name: string;
   email: string;
@@ -21,6 +23,14 @@ export interface LeadRow {
   subscriptionStartDate: string;
   status: string;
   lastStepCompleted: number | string;
+  totalSteps?: number;
+  formStatus?: 'partial' | 'completed';
+  isRepeat?: boolean;
+  firstLeadId?: string | null;
+  address?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
   checkoutVisited: boolean | string;
   utmSource?: string;
   utmSubSource?: string;
@@ -36,26 +46,21 @@ export interface LeadsApiResponse {
 }
 
 export const LEAD_COLUMNS: { key: keyof LeadRow; label: string; width?: string }[] = [
-  { key: "timestamp", label: "Submitted", width: "180px" },
+  { key: "timestamp", label: "Filled on", width: "160px" },
   { key: "name", label: "Name", width: "160px" },
-  { key: "email", label: "Email", width: "220px" },
   { key: "phoneNumber", label: "Phone", width: "140px" },
-  { key: "utmSource", label: "Source", width: "100px" },
-  { key: "utmSubSource", label: "Sub Source", width: "130px" },
-  { key: "age", label: "Age", width: "70px" },
-  { key: "gender", label: "Gender", width: "100px" },
-  { key: "height", label: "Height", width: "90px" },
-  { key: "weight", label: "Weight", width: "90px" },
-  { key: "goal", label: "Goal", width: "150px" },
-  { key: "diet", label: "Diet", width: "150px" },
-  { key: "foodPreference", label: "Food Pref.", width: "130px" },
-  { key: "physicalState", label: "Activity", width: "130px" },
-  { key: "subscriptionType", label: "Plan Type", width: "120px" },
-  { key: "plan", label: "Meals", width: "200px" },
-  { key: "subscriptionStartDate", label: "Start Date", width: "120px" },
+  { key: "email", label: "Email", width: "200px" },
+  { key: "address", label: "Address", width: "200px" },
+  { key: "lastStepCompleted", label: "How far they got", width: "140px" },
+  { key: "isRepeat", label: "Filled before?", width: "110px" },
+  { key: "plan", label: "Plan", width: "180px" },
+  { key: "subscriptionType", label: "Duration", width: "120px" },
+  { key: "goal", label: "Goal", width: "140px" },
+  { key: "diet", label: "Diet", width: "130px" },
+  { key: "foodPreference", label: "Food preference", width: "130px" },
+  { key: "physicalState", label: "Activity level", width: "130px" },
+  { key: "subscriptionStartDate", label: "Start date", width: "120px" },
   { key: "status", label: "Status", width: "110px" },
-  { key: "lastStepCompleted", label: "Step", width: "70px" },
-  { key: "checkoutVisited", label: "Checkout", width: "100px" },
 ];
 
 /**
