@@ -9,6 +9,8 @@ import { saveLeadNoteApi, type PipelineStatus, type NoteHistoryEntry } from "@/l
 interface NoteModalProps {
   isOpen: boolean;
   email: string;
+  leadId?: string;
+  phone?: string | number | null;
   name?: string;
   initialNotes?: string;
   noteHistory?: NoteHistoryEntry[];
@@ -27,6 +29,7 @@ function formatNoteDate(isoString: string): string {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
+      timeZone: "Asia/Kolkata",
     });
   } catch {
     return isoString;
@@ -35,14 +38,17 @@ function formatNoteDate(isoString: string): string {
 
 function roleLabel(role: string): string {
   if (role === "admin") return "Admin";
-  if (role === "caller") return "Telecaller";
+  if (role === "caller" || role === "telecaller") return "Telecaller";
   if (role === "manager") return "Manager";
+  if (role === "auditor") return "Auditor";
   return role;
 }
 
 export function NoteModal({
   isOpen,
   email,
+  leadId,
+  phone,
   name,
   initialNotes = "",
   noteHistory = [],
@@ -77,13 +83,26 @@ export function NoteModal({
     }
     setSaving(true);
     try {
-      const role: CrmRole = getCurrentRole() || "admin";
-      await saveLeadNoteApi(email, notes.trim(), role, currentStatus);
+      const role: CrmRole = getCurrentRole() || "telecaller";
+      const res = await saveLeadNoteApi(email, notes.trim(), role, currentStatus, {
+        leadId,
+        phone,
+      });
+
+      if (!res.success) {
+        toast.error("Could not save note, please try again", {
+          description: res.error || "Server rejected the note",
+        });
+        return;
+      }
+
       toast.success("Note saved", { description: name || email });
       if (onSuccess) onSuccess(notes.trim());
       onClose();
-    } catch {
-      toast.error("Failed to save note");
+    } catch (err: any) {
+      toast.error("Could not save note, please try again", {
+        description: err.message,
+      });
     } finally {
       setSaving(false);
     }

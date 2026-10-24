@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -159,6 +160,13 @@ export default function CrmLeadsPage() {
   const [earlierFormsLead, setEarlierFormsLead] = useState<LeadRow | null>(null);
 
   const debouncedSearch = useDebounce(search, 300);
+  const [notCompletedOnly, setNotCompletedOnly] = useState(false);
+  const [filledBeforeOnly, setFilledBeforeOnly] = useState(false);
+
+  const role = useMemo<import("@/lib/crm/auth").CrmRole | null>(() => {
+    if (typeof window === "undefined") return null;
+    return (require("@/lib/crm/auth") as typeof import("@/lib/crm/auth")).getCurrentRole();
+  }, []);
 
   const {
     data: dashData,
@@ -171,9 +179,12 @@ export default function CrmLeadsPage() {
 
   const { data: pipelineData } = usePipelineData();
   const refreshMutation = useRefreshDashboard();
+  const queryClient = useQueryClient();
 
   const [noteModalLead, setNoteModalLead] = useState<{
     email: string;
+    leadId?: string;
+    phone?: string | number;
     name: string;
     notes?: string;
     noteHistory?: import("@/lib/crm/pipeline").NoteHistoryEntry[];
@@ -199,7 +210,6 @@ export default function CrmLeadsPage() {
   const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
   const lastUpdated = useMemo(() => dataUpdatedAt ? new Date(dataUpdatedAt) : null, [dataUpdatedAt]);
 
-
   const verifiedEmails = useMemo(() => {
     const set = new Set<string>();
     for (const s of subs) {
@@ -212,10 +222,81 @@ export default function CrmLeadsPage() {
 
   const annotated = useMemo(() => {
     return rows.map((row) => {
-      const eff = effectiveStatus(String(row.email ?? ""), pipeline, verifiedEmails, row.phoneNumber);
+      const eff = effectiveStatus(
+        String(row.email ?? ""),
+        pipeline,
+        verifiedEmails,
+        row.phoneNumber,
+        row.status,
+        row.name,
+        row.id
+      );
       return { row, status: eff.status, source: eff.source };
     });
   }, [rows, pipeline, verifiedEmails]);
+
+  const handleStatusChange = async (
+    email: string,
+    name: string,
+    newStatus: PipelineStatus,
+    phone?: string | number,
+    leadId?: string
+  ) => {
+    if (!role) return;
+    if (role === "auditor") {
+      toast.error("Auditor has read-only access. Changes are not permitted.");
+      return;
+    }
+    const emailKey = String(email ?? "").toLowerCase().trim();
+    const pKey = cleanPhoneKey(phone);
+    const docKey = leadId || emailKey || pKey;
+    const meta = getStatusMeta(newStatus);
+
+    // Optimistic update
+    if (queryClient) {
+      queryClient.setQueryData(["crm", "pipeline-v2"], (old: any) => {
+        const data = old?.data ? { ...old.data } : {};
+        const oldEntry = data[docKey] || (emailKey ? data[emailKey] : null) || (pKey ? data[pKey] : null);
+        const existingHistory = oldEntry?.statusHistory ? [...oldEntry.statusHistory] : [];
+        const nowIso = new Date().toISOString();
+        existingHistory.push({
+          status: newStatus,
+          changedBy: role,
+          changedAt: nowIso,
+        });
+
+        const entry = {
+          ...oldEntry,
+          email: emailKey || pKey || docKey,
+          leadId: leadId || oldEntry?.leadId,
+          status: newStatus,
+          updatedAt: nowIso,
+          updatedBy: role,
+          statusHistory: existingHistory,
+        };
+
+        if (leadId) data[leadId] = entry;
+        if (emailKey) data[emailKey] = { ...data[emailKey], ...entry };
+        if (pKey) data[pKey] = { ...data[pKey], ...entry };
+        return { success: true, data };
+      });
+    }
+
+    const { setPipelineStatusApi } = await import("@/lib/crm/pipeline");
+    const res = await setPipelineStatusApi(email, newStatus, role, { phone, leadId });
+    if (res.success) {
+      toast.success(`${meta.icon} Moved to ${meta.label}`, {
+        description: name || email,
+      });
+    } else {
+      toast.error("Could not save, please try again", {
+        description: res.error || "Server rejected update",
+      });
+      if (queryClient) {
+        queryClient.invalidateQueries({ queryKey: ["crm", "pipeline-v2"] });
+      }
+    }
+  };
 
   const filtered = useMemo(() => {
     const matching = annotated.filter(({ row, status }) => {
@@ -223,15 +304,45 @@ export default function CrmLeadsPage() {
         const isCompleted = row.formStatus === "completed" || Number(row.lastStepCompleted) >= (row.totalSteps || 9);
         if (!isCompleted) return false;
       }
+      if (notCompletedOnly) {
+        const isCompleted =
+          row.formStatus === "completed" ||
+          Number(row.lastStepCompleted) >= (row.totalSteps || 9) ||
+          Boolean(row.checkoutVisited);
+        if (isCompleted) return false;
+      }
+      if (filledBeforeOnly && !row.isRepeat) {
+        return false;
+      }
       if (statusFilter !== "all" && status !== statusFilter) return false;
+
       if (debouncedSearch.trim()) {
-        const haystack = [row.name, row.email, row.phoneNumber]
-          .map((v) => String(v ?? ""))
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) {
-          return false;
-        }
+        const queryTerms = debouncedSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const rawPhone = String(row.phoneNumber ?? "");
+        const digitsOnly = rawPhone.replace(/\D/g, "");
+        const clean10 = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+        const haystack = [
+          row.name,
+          row.email,
+          rawPhone,
+          digitsOnly,
+          clean10,
+          row.address,
+          row.city,
+          row.state,
+          row.pinCode,
+        ]
+          .map((v) => String(v ?? "").toLowerCase())
+          .join(" ");
+
+        const matchesAll = queryTerms.every((term) => {
+          const cleanTerm = term.replace(/^\+91/, "").replace(/\D/g, "");
+          if (cleanTerm && digitsOnly.includes(cleanTerm)) return true;
+          return haystack.includes(term);
+        });
+
+        if (!matchesAll) return false;
       }
       return true;
     });
@@ -247,7 +358,7 @@ export default function CrmLeadsPage() {
       );
     }
     return sorted;
-  }, [annotated, debouncedSearch, statusFilter, completedOnly, sortBy]);
+  }, [annotated, debouncedSearch, statusFilter, completedOnly, notCompletedOnly, filledBeforeOnly, sortBy]);
 
   const verifiedCount = annotated.filter((a) => a.source === "online").length;
   const localCount = annotated.filter((a) => a.source === "local").length;
@@ -319,12 +430,12 @@ export default function CrmLeadsPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, email, or phone…"
+          placeholder="Search by name, email, phone, or address…"
           className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#E31E24] focus:outline-none focus:ring-1 focus:ring-[#E31E24] dark:border-gray-800 dark:bg-gray-900 dark:text-white sm:max-w-sm"
         />
         <select
@@ -338,6 +449,30 @@ export default function CrmLeadsPage() {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={() => setNotCompletedOnly((prev) => !prev)}
+          className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition border ${
+            notCompletedOnly
+              ? "border-amber-400 bg-amber-50 text-amber-900 shadow-sm dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200"
+              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+          }`}
+          title="Show only leads who did not finish the full form"
+        >
+          ⚠️ Not completed
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilledBeforeOnly((prev) => !prev)}
+          className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition border ${
+            filledBeforeOnly
+              ? "border-red-400 bg-red-50 text-red-900 shadow-sm dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
+              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+          }`}
+          title="Show only repeat leads who filled before"
+        >
+          🔄 Filled before
+        </button>
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as SortBy)}
@@ -418,7 +553,7 @@ export default function CrmLeadsPage() {
                       className="cursor-pointer odd:bg-white even:bg-gray-50 hover:bg-red-50/40 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-red-950/20"
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
-                        if (target.closest("a, button")) return;
+                        if (target.closest("a, button, select")) return;
                         window.location.href = href;
                       }}
                     >
@@ -426,20 +561,64 @@ export default function CrmLeadsPage() {
                         {idx + 1}
                       </td>
                       <td className="whitespace-nowrap border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.pill}`}
-                        >
-                          <span>{meta.icon}</span>
-                          {meta.shortLabel}
-                        </span>
-                        {source === "online" && (
-                          <div className="mt-0.5 text-[10px] text-emerald-700 dark:text-emerald-400">
-                            via Razorpay
-                          </div>
-                        )}
-                        {source === "local" && (
-                          <div className="mt-0.5 text-[10px] text-gray-400">local</div>
-                        )}
+                        <div className="flex flex-col items-start gap-1">
+                          {(() => {
+                            const { getPipelineEntryForLead } = require("@/lib/crm/pipeline");
+                            const entry = getPipelineEntryForLead(pipeline, row.id, row.email, row.phoneNumber);
+                            const latestHistory = entry?.statusHistory && entry.statusHistory.length > 0
+                              ? entry.statusHistory[entry.statusHistory.length - 1]
+                              : null;
+                            const historyText = latestHistory
+                              ? `Changed by ${latestHistory.changedBy} on ${new Date(latestHistory.changedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                              : null;
+
+                            return (
+                              <>
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.pill}`}
+                                  title={historyText || undefined}
+                                >
+                                  <span>{meta.icon}</span>
+                                  {meta.shortLabel}
+                                </span>
+                                {historyText && (
+                                  <span className="text-[10px] text-gray-400 dark:text-gray-500 max-w-[150px] truncate" title={historyText}>
+                                    {historyText}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
+                          {source === "online" ? (
+                            <div className="mt-0.5 text-[10px] text-emerald-700 dark:text-emerald-400">
+                              via Razorpay
+                            </div>
+                          ) : (
+                            role && role !== "auditor" && (
+                              <select
+                                value={status}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  handleStatusChange(
+                                    emailKey,
+                                    String(row.name ?? ""),
+                                    e.target.value as PipelineStatus,
+                                    row.phoneNumber,
+                                    row.id
+                                  );
+                                }}
+                                className="mt-0.5 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
+                              >
+                                {PIPELINE_STATUSES.map((s) => (
+                                  <option key={s.value} value={s.value}>
+                                    {s.icon} {s.shortLabel}
+                                  </option>
+                                ))}
+                              </select>
+                            )
+                          )}
+                        </div>
                       </td>
                       {LEAD_COLUMNS.map((col) => {
                         if (col.key === "name") {
@@ -490,32 +669,37 @@ export default function CrmLeadsPage() {
                       })}
                       <td className="sticky right-0 border-b border-gray-100 bg-white px-3 py-2 text-right dark:border-gray-800 dark:bg-gray-900">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setNoteModalLead({
-                                email: emailKey,
-                                name: String(row.name ?? ""),
-                                notes: pipeline[emailKey]?.notes || "",
-                                noteHistory: pipeline[emailKey]?.noteHistory ?? [],
-                                status: status,
-                              });
-                            }}
-                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
-                              pipeline[emailKey]?.notes
-                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60"
-                                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                            }`}
-                            title={
-                              pipeline[emailKey]?.notes
-                                ? `Note: ${pipeline[emailKey]?.notes}`
-                                : "Add / Edit Note"
-                            }
-                          >
-                            <StickyNote className="h-3.5 w-3.5" />
-                            {pipeline[emailKey]?.notes ? "Note" : "Note"}
-                          </button>
+                          {(() => {
+                            const { getPipelineEntryForLead } = require("@/lib/crm/pipeline");
+                            const entry = getPipelineEntryForLead(pipeline, row.id, row.email, row.phoneNumber);
+                            const hasNote = Boolean(entry?.notes || (entry?.noteHistory && entry.noteHistory.length > 0));
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setNoteModalLead({
+                                    email: emailKey,
+                                    leadId: row.id,
+                                    phone: row.phoneNumber,
+                                    name: String(row.name ?? ""),
+                                    notes: entry?.notes || "",
+                                    noteHistory: entry?.noteHistory ?? [],
+                                    status: status,
+                                  });
+                                }}
+                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
+                                  hasNote
+                                    ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60"
+                                    : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                                }`}
+                                title={entry?.notes ? `Note: ${entry.notes}` : "Add / Edit Note"}
+                              >
+                                <StickyNote className="h-3.5 w-3.5" />
+                                Note
+                              </button>
+                            );
+                          })()}
                           <a
                             href="https://dashboard.razorpay.com/app/invoices"
                             target="_blank"
@@ -546,6 +730,8 @@ export default function CrmLeadsPage() {
         <NoteModal
           isOpen={!!noteModalLead}
           email={noteModalLead.email}
+          leadId={noteModalLead.leadId}
+          phone={noteModalLead.phone}
           name={noteModalLead.name}
           initialNotes={noteModalLead.notes}
           noteHistory={noteModalLead.noteHistory ?? []}

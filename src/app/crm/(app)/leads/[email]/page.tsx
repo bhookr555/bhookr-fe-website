@@ -151,12 +151,14 @@ export default function LeadDetailPage() {
     return allSubs.filter((s) => String(s.email ?? "").toLowerCase().trim() === email);
   }, [allSubs, email]);
 
+  const pipeline = useMemo(() => pipelineData?.data ?? {}, [pipelineData]);
+
   const pipelineEntry = useMemo(() => {
-    return pipelineData?.data?.[email] ?? null;
-  }, [pipelineData, email]);
+    const { getPipelineEntryForLead } = require("@/lib/crm/pipeline");
+    return getPipelineEntryForLead(pipeline, lead?.id, email, lead?.phoneNumber) ?? null;
+  }, [pipeline, lead, email]);
 
   const error = dashError?.message || actionError;
-
 
   const isAdmin = role === "admin";
 
@@ -178,22 +180,39 @@ export default function LeadDetailPage() {
   );
 
   const eff = useMemo(() => {
-    const localMap: PipelineMap = pipelineEntry ? { [email]: pipelineEntry } : {};
-    return effectiveStatus(email, localMap, verifiedEmailSet, lead?.phoneNumber);
-  }, [email, verifiedEmailSet, pipelineEntry, lead]);
+    return effectiveStatus(
+      email,
+      pipeline,
+      verifiedEmailSet,
+      lead?.phoneNumber,
+      lead?.status,
+      lead?.name,
+      lead?.id
+    );
+  }, [email, pipeline, verifiedEmailSet, lead]);
   const effMeta = getStatusMeta(eff.status);
 
   const handleStatusChange = async (newStatus: PipelineStatus) => {
     if (!role) return;
+    if (role === "auditor") {
+      setActionError("Auditors have read-only access. You cannot update lead status.");
+      toast.error("Auditor has read-only access.");
+      return;
+    }
     if (newStatus === "converted") {
       setConvertOpen(true);
       return;
     }
-    const success = await setPipelineStatusApi(email, newStatus, role);
-    if (!success) {
-      setActionError("Failed to update status in the database");
+    setActionError(null);
+    const res = await setPipelineStatusApi(email, newStatus, role, {
+      phone: lead?.phoneNumber,
+      leadId: lead?.id,
+    });
+    if (!res.success) {
+      setActionError(res.error || "Could not save, please try again");
+      toast.error("Could not save, please try again");
     } else {
-      toast.success(`Status updated to ${newStatus}`);
+      toast.success(`Status updated to ${effMeta.label}`);
     }
   };
 
@@ -242,12 +261,30 @@ export default function LeadDetailPage() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
               {lead.name || <span className="text-gray-400">No name</span>}
             </h1>
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${effMeta.pill}`}
-            >
-              <span>{effMeta.icon}</span>
-              {effMeta.label}
-            </span>
+            <div className="flex flex-col items-start gap-0.5">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${effMeta.pill}`}
+              >
+                <span>{effMeta.icon}</span>
+                {effMeta.label}
+              </span>
+              {(() => {
+                const latestHistory = pipelineEntry?.statusHistory && pipelineEntry.statusHistory.length > 0
+                  ? pipelineEntry.statusHistory[pipelineEntry.statusHistory.length - 1]
+                  : null;
+                if (!latestHistory) return null;
+                return (
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Changed by {latestHistory.changedBy} on{" "}
+                    {new Date(latestHistory.changedAt).toLocaleString("en-IN", {
+                      timeZone: "Asia/Kolkata",
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                );
+              })()}
+            </div>
             {lead.isRepeat && (
               <button
                 type="button"
@@ -530,6 +567,8 @@ export default function LeadDetailPage() {
         <NoteModal
           isOpen={noteOpen}
           email={email}
+          leadId={lead.id}
+          phone={lead.phoneNumber}
           name={String(lead.name ?? "")}
           initialNotes={pipelineEntry?.notes || ""}
           noteHistory={pipelineEntry?.noteHistory ?? []}

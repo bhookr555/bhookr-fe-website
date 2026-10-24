@@ -50,6 +50,7 @@ import {
   PIPELINE_STATUSES,
   cleanPhoneKey,
   effectiveStatus,
+  getPipelineEntryForLead,
   getStatusMeta,
   setPipelineStatus,
   setPipelineStatusApi,
@@ -94,13 +95,24 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
+const istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 function localDateString(input: Date | string | number | null | undefined): string {
   const d = parseLeadDate(input);
   if (!d) return "";
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  try {
+    return istDateFormatter.format(d);
+  } catch {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
 }
 
 const formatLeadTimestamp = formatTimestamp;
@@ -242,17 +254,32 @@ export function MasterPipeline() {
     if (typeof window !== "undefined") {
       try {
         const savedFilter = localStorage.getItem("bhookr_crm_active_status_chip");
-        if (savedFilter) setFilterState(savedFilter as PipelineStatus | "all");
+        const validStatuses = new Set(["all", "new", "pending", "follow_up", "trial_requested", "hot_prospect", "future_prospect", "converted", "sale_rejected"]);
+        if (savedFilter && validStatuses.has(savedFilter)) {
+          setFilterState(savedFilter as PipelineStatus | "all");
+        } else {
+          setFilterState("all");
+        }
 
         // Always reset to today's leads on fresh open or refresh
         setDateModeState("today");
         localStorage.removeItem("bhookr_crm_active_date_mode");
 
         const savedSourceFilter = localStorage.getItem("bhookr_crm_active_source_filter");
-        if (savedSourceFilter) setSourceFilterState(savedSourceFilter as LeadSourceFilter);
+        const validSources = new Set(["all", "website", "client_form", "ads"]);
+        if (savedSourceFilter && validSources.has(savedSourceFilter)) {
+          setSourceFilterState(savedSourceFilter as LeadSourceFilter);
+        } else {
+          setSourceFilterState("all");
+        }
 
         const savedSortBy = localStorage.getItem("bhookr_crm_active_sort_by");
-        if (savedSortBy) setSortByState(savedSortBy as SortBy);
+        const validSorts = new Set(["newest", "oldest", "name"]);
+        if (savedSortBy && validSorts.has(savedSortBy)) {
+          setSortByState(savedSortBy as SortBy);
+        } else {
+          setSortByState("newest");
+        }
       } catch {
         // ignore
       }
@@ -297,6 +324,8 @@ export function MasterPipeline() {
   }, []);
 
   const [search, setSearch] = useState("");
+  const [notCompletedOnly, setNotCompletedOnly] = useState(false);
+  const [filledBeforeOnly, setFilledBeforeOnly] = useState(false);
   const [singleDate, setSingleDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -306,11 +335,15 @@ export function MasterPipeline() {
   const [convertingLead, setConvertingLead] = useState<{
     email: string;
     name: string;
+    leadId?: string;
   } | null>(null);
   const [noteModalLead, setNoteModalLead] = useState<{
     email: string;
+    leadId?: string;
+    phone?: string | number;
     name?: string;
     notes?: string;
+    noteHistory?: import("@/lib/crm/pipeline").NoteHistoryEntry[];
     status?: PipelineStatus;
   } | null>(null);
   const [earlierFormsLead, setEarlierFormsLead] = useState<LeadRow | null>(null);
@@ -318,7 +351,7 @@ export function MasterPipeline() {
   // Debounce search: only run filter pass 300ms after typing stops
   const debouncedSearch = useDebounce(search, 300);
 
-  // Today's date string — computed once, stable
+  // Today's date string — computed once, stable (Asia/Kolkata)
   const todayStr = useMemo(() => localDateString(new Date()), []);
 
   // ── Derived data from React Query ─────────────────────────────────────────
@@ -366,7 +399,8 @@ export function MasterPipeline() {
         verifiedEmails,
         lead.phoneNumber,
         lead.status,
-        lead.name
+        lead.name,
+        lead.id
       );
       return {
         lead,
@@ -378,64 +412,10 @@ export function MasterPipeline() {
     });
   }, [leads, pipeline, verifiedEmails]);
 
-  const dateFilteredLeads = useMemo(() => {
-    if (dateMode === "all") return annotatedLeads;
-    if (dateMode === "today") {
-      if (!todayStr) return annotatedLeads;
-      return annotatedLeads.filter((a) => a.dateKey === todayStr);
-    }
-    if (dateMode === "24h") {
-      const now = Date.now();
-      const h24Ms = 24 * 60 * 60 * 1000;
-      return annotatedLeads.filter((a) => {
-        const val = tsValue(a.lead.timestamp);
-        return val > 0 && now - val <= h24Ms;
-      });
-    }
-    if (dateMode === "7d") {
-      const now = Date.now();
-      const d7Ms = 7 * 24 * 60 * 60 * 1000;
-      return annotatedLeads.filter((a) => {
-        const val = tsValue(a.lead.timestamp);
-        return val > 0 && now - val <= d7Ms;
-      });
-    }
-    if (dateMode === "single") {
-      if (!singleDate) return annotatedLeads;
-      return annotatedLeads.filter((a) => a.dateKey === singleDate);
-    }
-    if (dateMode === "range") {
-      return annotatedLeads.filter((a) => {
-        if (!a.dateKey) return false;
-        if (startDate && a.dateKey < startDate) return false;
-        if (endDate && a.dateKey > endDate) return false;
-        return true;
-      });
-    }
-    return annotatedLeads;
-  }, [annotatedLeads, dateMode, todayStr, singleDate, startDate, endDate]);
-
-  const counts = useMemo(() => {
-    const map: Record<PipelineStatus | "all", number> = {
-      all: annotatedLeads.length,
-      new: 0, pending: 0, follow_up: 0, trial_requested: 0,
-      hot_prospect: 0, future_prospect: 0, converted: 0, sale_rejected: 0,
-    };
-    for (const a of annotatedLeads) {
-      if (map[a.status] !== undefined) {
-        map[a.status]++;
-      }
-    }
-    return map;
-  }, [annotatedLeads]);
-
-  // ── VISIBLE rows — uses debouncedSearch, not live search ─────────────────
-  // WHY: Without debounce, every keystroke triggers this useMemo over potentially
-  // hundreds of rows. At 300ms debounce, the filter runs at most once per typing pause.
-  const visible = useMemo(() => {
-    const leadsToFilter = filter !== "all" ? annotatedLeads : dateFilteredLeads;
-
-    const matching = leadsToFilter.filter((a) => {
+  // 1. Date & Source pre-filtering for consistent counts and list display
+  const baseFilteredLeads = useMemo(() => {
+    return annotatedLeads.filter((a) => {
+      // Source filter
       if (sourceFilter !== "all") {
         if (sourceFilter === "ads") {
           const src = String(a.lead.utmSource || "").trim();
@@ -445,13 +425,109 @@ export function MasterPipeline() {
           return false;
         }
       }
+
+      // Date filter
+      if (dateMode === "today") {
+        if (todayStr && a.dateKey !== todayStr) return false;
+      } else if (dateMode === "24h") {
+        const now = Date.now();
+        const h24Ms = 24 * 60 * 60 * 1000;
+        const val = tsValue(a.lead.timestamp);
+        if (!(val > 0 && now - val <= h24Ms)) return false;
+      } else if (dateMode === "7d") {
+        const now = Date.now();
+        const d7Ms = 7 * 24 * 60 * 60 * 1000;
+        const val = tsValue(a.lead.timestamp);
+        if (!(val > 0 && now - val <= d7Ms)) return false;
+      } else if (dateMode === "single") {
+        if (singleDate && a.dateKey !== singleDate) return false;
+      } else if (dateMode === "range") {
+        if (!a.dateKey) return false;
+        if (startDate && a.dateKey < startDate) return false;
+        if (endDate && a.dateKey > endDate) return false;
+      }
+
+      // Quick filter: Not completed
+      if (notCompletedOnly) {
+        const isCompleted =
+          a.lead.formStatus === "completed" ||
+          Number(a.lead.lastStepCompleted) >= (a.lead.totalSteps || 9) ||
+          Boolean(a.lead.checkoutVisited);
+        if (isCompleted) return false;
+      }
+
+      // Quick filter: Filled before
+      if (filledBeforeOnly && !a.lead.isRepeat) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    annotatedLeads,
+    sourceFilter,
+    dateMode,
+    todayStr,
+    singleDate,
+    startDate,
+    endDate,
+    notCompletedOnly,
+    filledBeforeOnly,
+  ]);
+
+  // Counts strictly reflect active source, date, and quick filters
+  const counts = useMemo(() => {
+    const map: Record<PipelineStatus | "all", number> = {
+      all: baseFilteredLeads.length,
+      new: 0,
+      pending: 0,
+      follow_up: 0,
+      trial_requested: 0,
+      hot_prospect: 0,
+      future_prospect: 0,
+      converted: 0,
+      sale_rejected: 0,
+    };
+    for (const a of baseFilteredLeads) {
+      if (map[a.status] !== undefined) {
+        map[a.status]++;
+      }
+    }
+    return map;
+  }, [baseFilteredLeads]);
+
+  // ── VISIBLE rows — uses debouncedSearch and status chip ─────────────────
+  const visible = useMemo(() => {
+    const matching = baseFilteredLeads.filter((a) => {
       if (filter !== "all" && a.status !== filter) return false;
+
       if (debouncedSearch.trim()) {
-        const haystack = [a.lead.name, a.lead.email, a.lead.phoneNumber]
-          .map((v) => String(v ?? ""))
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(debouncedSearch.trim().toLowerCase())) return false;
+        const queryTerms = debouncedSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const rawPhone = String(a.lead.phoneNumber ?? "");
+        const digitsOnly = rawPhone.replace(/\D/g, "");
+        const clean10 = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+        const haystack = [
+          a.lead.name,
+          a.lead.email,
+          rawPhone,
+          digitsOnly,
+          clean10,
+          a.lead.address,
+          a.lead.city,
+          a.lead.state,
+          a.lead.pinCode,
+        ]
+          .map((v) => String(v ?? "").toLowerCase())
+          .join(" ");
+
+        const matchesAll = queryTerms.every((term) => {
+          const cleanTerm = term.replace(/^\+91/, "").replace(/\D/g, "");
+          if (cleanTerm && digitsOnly.includes(cleanTerm)) return true;
+          return haystack.includes(term);
+        });
+
+        if (!matchesAll) return false;
       }
       return true;
     });
@@ -467,13 +543,13 @@ export function MasterPipeline() {
       );
     }
     return sorted;
-  }, [annotatedLeads, dateFilteredLeads, filter, debouncedSearch, sortBy, sourceFilter]);
+  }, [baseFilteredLeads, filter, debouncedSearch, sortBy]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleRefresh = useCallback(() => {
     refreshMutation.mutate(undefined, {
-      onSuccess: () => toast.success("Data refreshed from Google Sheets"),
+      onSuccess: () => toast.success("Data refreshed from database"),
       onError: () => toast.error("Refresh failed — using cached data"),
     });
   }, [refreshMutation]);
@@ -481,42 +557,86 @@ export function MasterPipeline() {
   const queryClient = useQueryClient();
 
   const handleStatusChange = useCallback(
-    async (email: string, name: string, newStatus: PipelineStatus, phone?: string | number) => {
+    async (
+      email: string,
+      name: string,
+      newStatus: PipelineStatus,
+      phone?: string | number,
+      leadId?: string
+    ) => {
       if (!role) return;
+      if (role === "auditor") {
+        toast.error("Auditor has read-only access. Changes are not permitted.");
+        return;
+      }
       if (newStatus === "converted") {
-        setConvertingLead({ email, name });
+        setConvertingLead({ email, name, leadId });
         return;
       }
 
       const emailKey = String(email ?? "").toLowerCase().trim();
       const pKey = cleanPhoneKey(phone);
+      const docKey = leadId || emailKey || pKey;
       const meta = getStatusMeta(newStatus);
+
+      // Snapshot previous cache for rollback
+      const previousPipelineData = queryClient.getQueryData<{ success: boolean; data: PipelineMap }>(
+        CRM_QUERY_KEYS.pipeline
+      );
 
       // 1. Optimistically update React Query in-memory pipeline map (0ms instant UI update)
       queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, (old: any) => {
         const data = old?.data ? { ...old.data } : {};
-        const entry = {
-          email: emailKey || pKey,
+        const oldEntry = data[docKey] || (emailKey ? data[emailKey] : null) || (pKey ? data[pKey] : null);
+        const existingHistory = oldEntry?.statusHistory ? [...oldEntry.statusHistory] : [];
+        const nowIso = new Date().toISOString();
+        existingHistory.push({
           status: newStatus,
-          updatedAt: new Date().toISOString(),
+          changedBy: role,
+          changedAt: nowIso,
+        });
+
+        const entry = {
+          ...oldEntry,
+          email: emailKey || pKey || docKey,
+          leadId: leadId || oldEntry?.leadId,
+          status: newStatus,
+          updatedAt: nowIso,
           updatedBy: role,
+          statusHistory: existingHistory,
         };
+
+        if (leadId) data[leadId] = entry;
         if (emailKey) data[emailKey] = { ...data[emailKey], ...entry };
         if (pKey) data[pKey] = { ...data[pKey], ...entry };
         return { success: true, data };
       });
 
-      // 2. Write to backend Firestore database (and dispatches PIPELINE_CHANGED_EVENT)
-      setPipelineStatusApi(email, newStatus, role, { phone }).then((success) => {
-        if (success) {
+      // 2. Write to backend server (Firestore + Supabase leads table)
+      try {
+        const res = await setPipelineStatusApi(email, newStatus, role, { phone, leadId });
+        if (res.success) {
           invalidatePipeline();
+          toast.success(`${meta.icon} Moved to ${meta.label}`, {
+            description: name || email,
+          });
+        } else {
+          // Rollback cache
+          if (previousPipelineData) {
+            queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, previousPipelineData);
+          }
+          toast.error("Could not save, please try again", {
+            description: res.error || "Server rejected update",
+          });
         }
-      });
-
-      // 3. Show immediate toast feedback
-      toast.success(`${meta.icon} Moved to ${meta.label}`, {
-        description: name || email,
-      });
+      } catch (err: any) {
+        if (previousPipelineData) {
+          queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, previousPipelineData);
+        }
+        toast.error("Could not save, please try again", {
+          description: err?.message || "Network error",
+        });
+      }
     },
     [role, invalidatePipeline, queryClient]
   );
@@ -677,15 +797,15 @@ export function MasterPipeline() {
   };
 
   const dateEmptyReason =
-    dateMode === "today" && dateFilteredLeads.length === 0
+    dateMode === "today" && baseFilteredLeads.length === 0
       ? `No leads captured today (${todayStr}). Try "Last 24 hours", "Last 7 days", or "All time".`
-      : dateMode === "24h" && dateFilteredLeads.length === 0
+      : dateMode === "24h" && baseFilteredLeads.length === 0
       ? `No leads captured in the last 24 hours.`
-      : dateMode === "7d" && dateFilteredLeads.length === 0
+      : dateMode === "7d" && baseFilteredLeads.length === 0
       ? `No leads captured in the last 7 days.`
-      : dateMode === "single" && singleDate && dateFilteredLeads.length === 0
+      : dateMode === "single" && singleDate && baseFilteredLeads.length === 0
       ? `No leads captured on ${singleDate}.`
-      : dateMode === "range" && (startDate || endDate) && dateFilteredLeads.length === 0
+      : dateMode === "range" && (startDate || endDate) && baseFilteredLeads.length === 0
       ? `No leads between ${startDate || "any"} and ${endDate || "any"}.`
       : null;
 
@@ -703,7 +823,7 @@ export function MasterPipeline() {
           <h2 className="mt-0.5 text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
             {dashLoading
               ? "Loading…"
-              : `${visible.length} of ${dateFilteredLeads.length} leads`}
+              : `${visible.length} of ${baseFilteredLeads.length} leads`}
           </h2>
           {!dashLoading && (
             <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
@@ -932,6 +1052,32 @@ export function MasterPipeline() {
           </div>
         )}
 
+        <button
+          type="button"
+          onClick={() => setNotCompletedOnly((prev) => !prev)}
+          className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition border ${
+            notCompletedOnly
+              ? "border-amber-400 bg-amber-50 text-amber-900 shadow-sm dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200"
+              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300 dark:hover:bg-gray-900"
+          }`}
+          title="Show only leads who did not finish the full form"
+        >
+          ⚠️ Not completed
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setFilledBeforeOnly((prev) => !prev)}
+          className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition border ${
+            filledBeforeOnly
+              ? "border-red-400 bg-red-50 text-red-900 shadow-sm dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
+              : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300 dark:hover:bg-gray-900"
+          }`}
+          title="Show only repeat leads who filled before"
+        >
+          🔄 Filled before
+        </button>
+
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as SortBy)}
@@ -1082,12 +1228,32 @@ export function MasterPipeline() {
                       </Td>
                       <Td>
                         <div className="flex flex-col items-start gap-1">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.pill}`}
-                          >
-                            <span>{meta.icon}</span>
-                            {meta.shortLabel}
-                          </span>
+                          {(() => {
+                            const entry = getPipelineEntryForLead(pipeline, a.lead.id, a.lead.email, a.lead.phoneNumber);
+                            const latestHistory = entry?.statusHistory && entry.statusHistory.length > 0
+                              ? entry.statusHistory[entry.statusHistory.length - 1]
+                              : null;
+                            const historyText = latestHistory
+                              ? `Changed by ${latestHistory.changedBy} on ${new Date(latestHistory.changedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                              : null;
+
+                            return (
+                              <>
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.pill}`}
+                                  title={historyText || undefined}
+                                >
+                                  <span>{meta.icon}</span>
+                                  {meta.shortLabel}
+                                </span>
+                                {historyText && (
+                                  <span className="text-[10px] text-gray-400 dark:text-gray-500 max-w-[150px] truncate" title={historyText}>
+                                    {historyText}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                           {isOnlineConverted ? (
                             <span className="text-[10px] text-emerald-700 dark:text-emerald-400">
                               via Razorpay
@@ -1101,7 +1267,8 @@ export function MasterPipeline() {
                                     emailKey,
                                     String(a.lead.name ?? ""),
                                     e.target.value as PipelineStatus,
-                                    a.lead.phoneNumber
+                                    a.lead.phoneNumber,
+                                    a.lead.id
                                   )
                                 }
                                 className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
@@ -1118,30 +1285,35 @@ export function MasterPipeline() {
                       </Td>
                       <Td align="right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNoteModalLead({
-                                email: emailKey,
-                                name: String(a.lead.name ?? ""),
-                                notes: pipeline[emailKey]?.notes || "",
-                                status: a.status,
-                              })
-                            }
-                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
-                              pipeline[emailKey]?.notes
-                                ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60"
-                                : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
-                            }`}
-                            title={
-                              pipeline[emailKey]?.notes
-                                ? `Note: ${pipeline[emailKey]?.notes}`
-                                : "Add / Edit Note"
-                            }
-                          >
-                            <StickyNote className="h-3.5 w-3.5" />
-                            Note
-                          </button>
+                          {(() => {
+                            const entry = getPipelineEntryForLead(pipeline, a.lead.id, a.lead.email, a.lead.phoneNumber);
+                            const hasNote = Boolean(entry?.notes || (entry?.noteHistory && entry.noteHistory.length > 0));
+                            return (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNoteModalLead({
+                                    email: emailKey,
+                                    leadId: a.lead.id,
+                                    phone: a.lead.phoneNumber,
+                                    name: String(a.lead.name ?? ""),
+                                    notes: entry?.notes || "",
+                                    noteHistory: entry?.noteHistory || [],
+                                    status: a.status,
+                                  })
+                                }
+                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition ${
+                                  hasNote
+                                    ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60"
+                                    : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-amber-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+                                }`}
+                                title={entry?.notes ? `Note: ${entry.notes}` : "Add / Edit Note"}
+                              >
+                                <StickyNote className="h-3.5 w-3.5" />
+                                Note
+                              </button>
+                            );
+                          })()}
                           <a
                             href="https://dashboard.razorpay.com/app/invoices"
                             target="_blank"
@@ -1189,8 +1361,11 @@ export function MasterPipeline() {
         <NoteModal
           isOpen={!!noteModalLead}
           email={noteModalLead.email}
+          leadId={noteModalLead.leadId}
+          phone={noteModalLead.phone}
           name={noteModalLead.name}
           initialNotes={noteModalLead.notes}
+          noteHistory={noteModalLead.noteHistory ?? []}
           currentStatus={noteModalLead.status}
           onClose={() => {
             setNoteModalLead(null);

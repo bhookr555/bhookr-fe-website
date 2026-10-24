@@ -26,13 +26,21 @@ export interface NoteHistoryEntry {
   savedAt: string;
 }
 
+export interface StatusHistoryEntry {
+  status: PipelineStatus;
+  changedBy: string;
+  changedAt: string;
+}
+
 export interface PipelineEntry {
   email: string;
+  leadId?: string;
   status: PipelineStatus;
   updatedAt: string;
   updatedBy: CrmRole;
   notes?: string;
   noteHistory?: NoteHistoryEntry[];
+  statusHistory?: StatusHistoryEntry[];
   // Conversion-specific (only set when status === "converted"):
   planType?: string;
   amount?: number;
@@ -89,8 +97,8 @@ export const PIPELINE_STATUSES: PipelineStatusMeta[] = [
   },
   {
     value: "hot_prospect",
-    label: "Hot prospect",
-    shortLabel: "Hot",
+    label: "Interested",
+    shortLabel: "Interested",
     icon: "🔥",
     pill: "bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300",
     description: "Strong interest — likely to convert",
@@ -290,69 +298,98 @@ export function normalizeSheetStatus(rawStatus?: string | null): PipelineStatus 
  * Checks by email key first, then falls back to phone_XXXXXXXXXX key,
  * raw phone digits, name, and finally status written in Google Sheets.
  */
+export function getPipelineEntryForLead(
+  pipeline: PipelineMap,
+  leadId?: string,
+  email?: string,
+  phone?: string | number | null
+): PipelineEntry | undefined {
+  if (leadId && pipeline[leadId]) {
+    return pipeline[leadId];
+  }
+  const emailKey = normaliseEmail(email ?? "");
+  if (emailKey && pipeline[emailKey]) {
+    return pipeline[emailKey];
+  }
+  const pKey = cleanPhoneKey(phone);
+  if (pKey && pipeline[pKey]) {
+    return pipeline[pKey];
+  }
+  const rawDigits = String(phone ?? "").replace(/\D/g, "");
+  if (rawDigits) {
+    if (pipeline[rawDigits]) return pipeline[rawDigits];
+    if (rawDigits.length >= 10 && pipeline[rawDigits.slice(-10)]) return pipeline[rawDigits.slice(-10)];
+  }
+  return undefined;
+}
+
+/**
+ * Determine the effective pipeline status for a lead.
+ * Priority:
+ * 1. Verified online payment (in Subscriptions) -> "converted" (source: "online")
+ * 2. Exact lead row ID in pipeline -> local / database record
+ * 3. Email match in pipeline
+ * 4. Phone match in pipeline
+ * 5. Sheet status fallback
+ * 6. Default to "new"
+ */
 export function effectiveStatus(
   email: string,
   pipeline: PipelineMap,
   verifiedEmails: Set<string>,
   phone?: string | number | null,
   sheetStatus?: string,
-  name?: string
-): { status: PipelineStatus; source: "online" | "local" | "sheet" | "default" } {
+  name?: string,
+  leadId?: string
+): { status: PipelineStatus; source: "online" | "local" | "sheet" | "default"; entry?: PipelineEntry } {
   const emailKey = normaliseEmail(email);
-  if (emailKey && verifiedEmails.has(emailKey)) return { status: "converted", source: "online" };
+  if (emailKey && verifiedEmails.has(emailKey)) {
+    return { status: "converted", source: "online" };
+  }
 
+  // 1. Direct lead unique ID match (exact row)
+  if (leadId && pipeline[leadId]?.status) {
+    return { status: pipeline[leadId].status, source: "local", entry: pipeline[leadId] };
+  }
+
+  // 2. Email key match
   const entryByEmail = emailKey ? pipeline[emailKey] : undefined;
   if (entryByEmail?.status) {
-    return { status: entryByEmail.status, source: "local" };
+    return { status: entryByEmail.status, source: "local", entry: entryByEmail };
   }
 
   const strippedEmail = emailKey.replace(/\s+/g, "");
   const entryByStripped = strippedEmail ? pipeline[strippedEmail] : undefined;
   if (entryByStripped?.status) {
-    return { status: entryByStripped.status, source: "local" };
+    return { status: entryByStripped.status, source: "local", entry: entryByStripped };
   }
 
+  // 3. Phone key match
   const pKey = cleanPhoneKey(phone);
   const entryByPKey = pKey ? pipeline[pKey] : undefined;
   if (entryByPKey?.status) {
-    return { status: entryByPKey.status, source: "local" };
+    return { status: entryByPKey.status, source: "local", entry: entryByPKey };
   }
 
   const rawDigits = String(phone ?? "").replace(/\D/g, "");
   if (rawDigits) {
     const pKey10 = `phone_${rawDigits.slice(-10)}`;
     const e10 = pipeline[pKey10];
-    if (e10?.status) return { status: e10.status, source: "local" };
+    if (e10?.status) return { status: e10.status, source: "local", entry: e10 };
 
     const eRaw = pipeline[rawDigits];
-    if (eRaw?.status) return { status: eRaw.status, source: "local" };
+    if (eRaw?.status) return { status: eRaw.status, source: "local", entry: eRaw };
 
     if (rawDigits.length >= 10) {
       const eSlice = pipeline[rawDigits.slice(-10)];
-      if (eSlice?.status) return { status: eSlice.status, source: "local" };
+      if (eSlice?.status) return { status: eSlice.status, source: "local", entry: eSlice };
     }
   }
 
   if (name) {
     const nameKey = normaliseEmail(name);
     const eName = nameKey ? pipeline[nameKey] : undefined;
-    if (eName?.status) return { status: eName.status, source: "local" };
-  }
-
-  if (emailKey || rawDigits) {
-    const normSearch = emailKey.replace(/\s+/g, "");
-    const last10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
-
-    for (const [pDocId, pEntry] of Object.entries(pipeline)) {
-      if (!pEntry?.status) continue;
-      const pNorm = pDocId.toLowerCase().replace(/\s+/g, "");
-      if (normSearch && normSearch.length > 4 && (pNorm === normSearch || pNorm.includes(normSearch))) {
-        return { status: pEntry.status, source: "local" };
-      }
-      if (last10 && last10.length >= 8 && pNorm.includes(last10)) {
-        return { status: pEntry.status, source: "local" };
-      }
-    }
+    if (eName?.status) return { status: eName.status, source: "local", entry: eName };
   }
 
   const fromSheet = normalizeSheetStatus(sheetStatus);
@@ -380,61 +417,49 @@ export async function setPipelineStatusApi(
   status: PipelineStatus,
   role: CrmRole,
   extras?: {
+    leadId?: string;
     notes?: string;
     planType?: string;
     amount?: number;
     paymentMethod?: string;
     phone?: string | number | null;
   }
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
   try {
-    const key = normaliseEmail(email);
-    const pKey = cleanPhoneKey(extras?.phone);
-    if (!key && !pKey) return false;
+    const primaryKey = extras?.leadId || normaliseEmail(email) || cleanPhoneKey(extras?.phone);
+    if (!primaryKey) return { success: false, error: "Missing lead identifier" };
 
-    // Synchronously update local storage map for instant 0ms persistence on device
-    setPipelineStatus(email, status, role, extras);
-
-    let success = false;
-    if (key) {
-      const res = await fetch("/api/crm/pipeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: key, status, role, extras }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) success = true;
-      }
-    }
-    if (pKey && pKey !== key) {
-      const res = await fetch("/api/crm/pipeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: pKey, status, role, extras }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) success = true;
-      }
-    }
-    if (success) {
-      window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
-      return true;
-    }
-    return false;
-  } catch (err) {
-    console.error("Failed to set pipeline status via API:", err);
-    return false;
-  }
-}
-
-export async function removePipelineEntryApi(email: string): Promise<boolean> {
-  try {
     const res = await fetch("/api/crm/pipeline", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", email }),
+      body: JSON.stringify({
+        email: primaryKey,
+        leadId: extras?.leadId,
+        status,
+        role,
+        extras,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
+      return { success: true };
+    }
+    return { success: false, error: data.error || `Server responded with ${res.status}` };
+  } catch (err: any) {
+    console.error("Failed to set pipeline status via API:", err);
+    return { success: false, error: err.message || "Network error. Please try again." };
+  }
+}
+
+export async function removePipelineEntryApi(email: string, leadId?: string): Promise<boolean> {
+  try {
+    const target = leadId || email;
+    const res = await fetch("/api/crm/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", email: target, leadId }),
     });
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
@@ -453,32 +478,35 @@ export async function saveLeadNoteApi(
   email: string,
   notes: string,
   role: CrmRole,
-  currentStatus: PipelineStatus = "new"
-): Promise<boolean> {
-  // Uses action: "saveNote" which appends to noteHistory in Firestore.
-  // Notes are NEVER overwritten — each save creates a new history entry.
+  currentStatus: PipelineStatus = "new",
+  extras?: { leadId?: string; phone?: string | number | null }
+): Promise<{ success: boolean; error?: string }> {
   try {
+    const primaryKey = extras?.leadId || normaliseEmail(email) || cleanPhoneKey(extras?.phone);
+    if (!primaryKey) return { success: false, error: "Missing lead identifier" };
+
     const res = await fetch("/api/crm/pipeline", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "saveNote",
-        email,
+        email: primaryKey,
+        leadId: extras?.leadId,
         status: currentStatus,
         role,
-        extras: { notes, appendNote: true },
+        extras: { notes, appendNote: true, ...extras },
       }),
     });
-    if (!res.ok) throw new Error(`Status ${res.status}`);
-    const data = await res.json();
-    if (data.success) {
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
       window.dispatchEvent(new CustomEvent(PIPELINE_CHANGED_EVENT));
-      return true;
+      return { success: true };
     }
-    return false;
-  } catch (err) {
+    return { success: false, error: data.error || `Server responded with ${res.status}` };
+  } catch (err: any) {
     console.error("Failed to save note via API:", err);
-    return false;
+    return { success: false, error: err.message || "Network error. Please try again." };
   }
 }
 

@@ -74,91 +74,36 @@ async function fetchDashboard(forceRefresh = false): Promise<DashboardResponse> 
 }
 
 async function fetchPipeline(): Promise<PipelineResponse> {
-  const localPipeline = typeof window !== "undefined" ? loadPipeline() : {};
   try {
-    const res = await fetch("/api/crm/pipeline", {
+    const res = await fetch(`/api/crm/pipeline?t=${Date.now()}`, {
       credentials: "include",
       cache: "no-store",
     });
     if (!res.ok) {
-      return { success: true, data: localPipeline };
+      const fallback = typeof window !== "undefined" ? loadPipeline() : {};
+      return { success: true, data: fallback };
     }
     const body = await res.json();
-    const serverMap = body?.success && body?.pipeline ? body.pipeline : {};
-    const mergedMap = { ...localPipeline, ...serverMap };
-
-    if (typeof window !== "undefined" && Object.keys(mergedMap).length > 0) {
-      try {
-        localStorage.setItem("bhookr_crm_pipeline_v1", JSON.stringify(mergedMap));
-      } catch {
-        // ignore quota errors
-      }
-    }
-
-    return { success: true, data: mergedMap };
+    const serverMap: PipelineMap = body?.success && body?.pipeline ? body.pipeline : {};
+    return { success: true, data: serverMap };
   } catch (err) {
-    console.warn("[fetchPipeline] API fetch failed, using local pipeline:", err);
-    return { success: true, data: localPipeline };
+    console.warn("[fetchPipeline] API fetch failed, using fallback:", err);
+    const fallback = typeof window !== "undefined" ? loadPipeline() : {};
+    return { success: true, data: fallback };
   }
 }
 
 
 // ── Primary Hook: all dashboard data ─────────────────────────────────────────
 
-/**
- * Bump this version whenever a fix changes how lead data is parsed or displayed.
- * Old localStorage entries stored under a different version are automatically
- * discarded on the next page load — no manual Refresh needed.
- */
-const CACHE_VERSION = "v11"; // bump on each fix that changes lead data shape
-const LS_CACHE_KEY = `bhookr_crm_dash_cache_${CACHE_VERSION}`;
-
-// Purge all old versioned cache keys except the current one
+// Purge all legacy versioned cache keys from localStorage
 if (typeof window !== "undefined") {
   try {
     Object.keys(localStorage)
-      .filter((k) => k.startsWith("bhookr_crm_dash_cache") && k !== LS_CACHE_KEY)
+      .filter((k) => k.startsWith("bhookr_crm_dash_cache"))
       .forEach((k) => localStorage.removeItem(k));
   } catch {
     // ignore
-  }
-}
-
-/**
- * Helper to safely read cached initial dashboard data from localStorage for 0ms render.
- * Uses versioned key — any old cache from a previous deploy is automatically ignored.
- */
-function getInitialDashboardData(): DashboardResponse | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    const raw = localStorage.getItem(LS_CACHE_KEY);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as DashboardResponse;
-    const leadsCount = parsed?.leads?.rows?.length ?? 0;
-    const clientFormCount = parsed?.clientForm?.rows?.length ?? 0;
-    if (leadsCount === 0 && clientFormCount === 0) {
-      localStorage.removeItem(LS_CACHE_KEY);
-      return undefined;
-    }
-    return parsed;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Helper to safely write dashboard data to localStorage (versioned key)
- */
-function setInitialDashboardData(data: DashboardResponse) {
-  if (typeof window === "undefined") return;
-  try {
-    const leadsCount = data?.leads?.rows?.length ?? 0;
-    const clientFormCount = data?.clientForm?.rows?.length ?? 0;
-    if (leadsCount > 0 || clientFormCount > 0) {
-      localStorage.setItem(LS_CACHE_KEY, JSON.stringify(data));
-    }
-  } catch {
-    // ignore quota errors
   }
 }
 
@@ -232,11 +177,7 @@ export function useDashboardData() {
 
   const query = useQuery<DashboardResponse, Error>({
     queryKey: CRM_QUERY_KEYS.dashboard,
-    queryFn: async () => {
-      const data = await fetchDashboard(false);
-      setInitialDashboardData(data);
-      return data;
-    },
+    queryFn: () => fetchDashboard(false),
     staleTime: 5 * 1000,              // 5s: refresh quickly when leads arrive
     gcTime: 10 * 60 * 1000,           // 10 min: keep in memory across navigations
     refetchInterval: 10 * 1000,       // 10s: reliable background synchronization
@@ -245,7 +186,6 @@ export function useDashboardData() {
     refetchOnReconnect: true,          // Refresh instantly when network reconnects
     retry: 2,
     retryDelay: (i) => Math.min(1000 * 2 ** i, 10_000),
-    initialData: getInitialDashboardData, // 0ms INSTANT load from localStorage on frame 1
     placeholderData: keepPreviousData,    // No flash between refreshes
   });
 
@@ -255,19 +195,76 @@ export function useDashboardData() {
 // ── Pipeline Hook ─────────────────────────────────────────────────────────────
 
 /**
- * Pipeline is kept as a separate query because:
- * 1. It's user-editable state — must always be fresh (no staleTime)
- * 2. It reads directly from Firestore, not GAS → always fast
- * 3. It gets invalidated after every status/note change
+ * Pipeline is user-editable state (statuses, notes, history).
+ * We subscribe to realtime updates and refetch every 4 seconds in the background
+ * so changes by one telecaller/admin appear for everyone within seconds without manual refresh.
  */
 export function usePipelineData() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let unsubscribeFirestore: (() => void) | undefined;
+    let cancelled = false;
+
+    // Dynamically import Firestore client listener if configured
+    import("@/lib/firebase/config").then(({ db, isFirebaseConfigured }) => {
+      if (cancelled || !isFirebaseConfigured || !db) return;
+      try {
+        import("firebase/firestore").then(({ collection, onSnapshot }) => {
+          if (cancelled) return;
+          const colRef = collection(db, "crm_pipeline");
+          unsubscribeFirestore = onSnapshot(
+            colRef,
+            (snapshot) => {
+              const pipeline: PipelineMap = {};
+              snapshot.docs.forEach((doc) => {
+                const data = doc.data();
+                pipeline[doc.id] = {
+                  email: doc.id,
+                  leadId: data.leadId,
+                  status: data.status,
+                  updatedAt: data.updatedAt,
+                  updatedBy: data.updatedBy,
+                  notes: data.notes,
+                  noteHistory: data.noteHistory ?? [],
+                  statusHistory: data.statusHistory ?? [],
+                  planType: data.planType,
+                  amount: data.amount,
+                  paymentMethod: data.paymentMethod,
+                };
+              });
+              queryClient.setQueryData(CRM_QUERY_KEYS.pipeline, {
+                success: true,
+                data: pipeline,
+              });
+            },
+            (error) => {
+              console.warn("[usePipelineData] Firestore onSnapshot warning:", error.message);
+            }
+          );
+        });
+      } catch (err) {
+        console.warn("[usePipelineData] Realtime listener setup error:", err);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (unsubscribeFirestore) unsubscribeFirestore();
+    };
+  }, [queryClient]);
+
   return useQuery<PipelineResponse, Error>({
     queryKey: CRM_QUERY_KEYS.pipeline,
     queryFn: fetchPipeline,
-    staleTime: 0,                 // Always fresh (it's mutable user data)
+    staleTime: 0,
     gcTime: 5 * 60 * 1000,
+    refetchInterval: 4000, // Background poll every 4s to ensure fast multi-user sync
     refetchOnWindowFocus: true,
-    retry: 1,
+    refetchOnReconnect: true,
+    retry: 2,
   });
 }
 
@@ -357,8 +354,6 @@ export function useRefreshDashboard() {
     onSuccess: (data) => {
       // Seed the cache with the fresh data immediately (no extra fetch)
       queryClient.setQueryData<DashboardResponse>(CRM_QUERY_KEYS.dashboard, data);
-      // Write fresh data back to localStorage so next page load is also correct
-      setInitialDashboardData(data);
     },
     onError: (err) => {
       console.error("[useRefreshDashboard] Force refresh failed:", err);
