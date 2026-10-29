@@ -8,10 +8,16 @@ import { submitLeadToSheet, submitSubscriptionToSheet, submitWithRetry } from '@
 import type { LeadData, SubscriptionData } from '@/lib/google-sheets';
 import { toast } from 'sonner';
 
+export interface SubmitLeadResult {
+  success: boolean;
+  leadId?: string;
+  error?: string | null;
+}
+
 interface UseGoogleSheetsReturn {
   isSubmitting: boolean;
   error: string | null;
-  submitLead: (data: LeadData) => Promise<boolean>;
+  submitLead: (data: LeadData) => Promise<SubmitLeadResult>;
   submitSubscription: (data: SubscriptionData) => Promise<boolean>;
 }
 
@@ -20,10 +26,10 @@ export function useGoogleSheets(): UseGoogleSheetsReturn {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Submit lead to Google Sheets
-   * Called when user completes Step 7
+   * Submit lead to Google Sheets & Supabase
+   * Called across form step completions
    */
-  const submitLead = useCallback(async (data: LeadData): Promise<boolean> => {
+  const submitLead = useCallback(async (data: LeadData): Promise<SubmitLeadResult> => {
     setIsSubmitting(true);
     setError(null);
 
@@ -35,28 +41,22 @@ export function useGoogleSheets(): UseGoogleSheetsReturn {
       );
 
       if (response.success) {
-        console.log('✅ Lead submitted successfully:', response.email);
-        return true;
+        console.log('✅ Lead submitted successfully:', response.email, 'leadId:', response.leadId);
+        return { success: true, leadId: response.leadId };
       } else {
         const errorMessage = response.error || 'Failed to submit lead';
         console.error('❌ Lead submission failed:', errorMessage);
         setError(errorMessage);
         
-        // Show toast notification
-        toast.error('Failed to save your information', {
-          description: 'Your data may not have been saved. Please try again.',
-        });
-        
-        return false;
+        return { success: false, error: errorMessage };
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       console.error('❌ Lead submission error:', errorMessage);
       setError(errorMessage);
       
-      // Don't show error toast - allow form to proceed even if tracking fails
       console.warn('Lead tracking failed but allowing user to continue');
-      return true; // Return true to allow user to continue despite tracking failure
+      return { success: true, error: errorMessage };
     } finally {
       setIsSubmitting(false);
     }

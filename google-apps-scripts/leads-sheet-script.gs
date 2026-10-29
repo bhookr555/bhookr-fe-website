@@ -109,10 +109,12 @@ function doPost(e) {
     }
 
     const sessionId = String(data.sessionId || data.session_id || '').trim();
+    const phoneStr = String(data.phone || data.phoneNumber || '').trim();
+    const emailStr = String(data.email || '').trim();
     const lastRow = sheet.getLastRow();
     let existingRow = -1;
 
-    // Search for existing row by session_id in Column 9 (Column I)
+    // 1. Search for existing row by session_id in Column 9 (Column I)
     if (sessionId && lastRow > 1) {
       const idValues = sheet.getRange(2, 9, lastRow - 1, 1).getValues();
       for (var i = 0; i < idValues.length; i++) {
@@ -123,11 +125,29 @@ function doPost(e) {
       }
     }
 
+    // 2. Fallback search by Phone (Col 3) or Email (Col 4) so multi-step submissions update in place
+    if (existingRow === -1 && lastRow > 1 && (phoneStr || emailStr)) {
+      const contactRange = sheet.getRange(2, 3, lastRow - 1, 2).getValues();
+      const normInputPhone = phoneStr.replace(/\D/g, '').slice(-10);
+      const normInputEmail = emailStr.toLowerCase().trim();
+
+      for (var j = 0; j < contactRange.length; j++) {
+        var rowPhone = String(contactRange[j][0] || '').replace(/\D/g, '').slice(-10);
+        var rowEmail = String(contactRange[j][1] || '').toLowerCase().trim();
+
+        var phoneMatch = normInputPhone && normInputPhone.length === 10 && rowPhone === normInputPhone;
+        var emailMatch = normInputEmail && !normInputEmail.endsWith('@bhookr.lead') && rowEmail === normInputEmail;
+
+        if (phoneMatch || emailMatch) {
+          existingRow = j + 2;
+          break;
+        }
+      }
+    }
+
     // Prepare human-readable plain fields
     const dateStr = data.date || Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd hh:mm a");
     const nameStr = String(data.name || '').trim();
-    const phoneStr = String(data.phone || data.phoneNumber || '').trim();
-    const emailStr = String(data.email || '').trim();
     const addressStr = String(data.address || '').trim();
     const otherDetailsStr = String(data.otherDetails || '').trim();
     const howFarStr = String(data.howFarTheyGot || (data.lastStepCompleted ? 'Step ' + data.lastStepCompleted + ' of 9' : 'Step 1 of 9')).trim();

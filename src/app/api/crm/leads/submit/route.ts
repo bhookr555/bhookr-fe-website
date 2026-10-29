@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const leadId = String(body.leadId || body.id || "").trim();
     const sessionId = String(body.sessionId || body.session_id || "").trim() || `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const phoneNumberRaw = body.phoneNumber || body.phone;
     const normPhone = normalizeIndianPhone(phoneNumberRaw);
@@ -126,9 +127,25 @@ export async function POST(req: NextRequest) {
     const state = body.state || null;
     const pinCode = body.pinCode || body.pin_code || null;
 
-    // ── 1. CHECK EXISTING ROW FOR THIS SESSION ───────────────────────────────
+    // ── 1. CHECK EXISTING ROW FOR THIS PERSON / SESSION ───────────────────────
     let existingSessionLead: any = null;
-    if (sessionId) {
+
+    // Strategy 1: Check by direct leadId if client already has a record ID
+    if (leadId) {
+      const { data: idMatch } = await supabaseAdmin
+        .from("leads")
+        .select("*")
+        .eq("id", leadId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (idMatch && idMatch.length > 0) {
+        existingSessionLead = idMatch[0];
+      }
+    }
+
+    // Strategy 2: Check by session_id (if column exists)
+    if (!existingSessionLead && sessionId) {
       const { data: sessionMatch, error: sessionErr } = await supabaseAdmin
         .from("leads")
         .select("*")
@@ -139,7 +156,6 @@ export async function POST(req: NextRequest) {
       if (!sessionErr && sessionMatch && sessionMatch.length > 0) {
         existingSessionLead = sessionMatch[0];
       } else {
-        // Fallback check if session_id column not migrated yet: check utm_sub_source
         const { data: fallbackMatch } = await supabaseAdmin
           .from("leads")
           .select("*")
@@ -149,30 +165,37 @@ export async function POST(req: NextRequest) {
 
         if (fallbackMatch && fallbackMatch.length > 0) {
           existingSessionLead = fallbackMatch[0];
-        } else if (normEmail || normPhone) {
-          // If the visitor already filled phone or email in this session, match recent row
-          const orConds: string[] = [];
-          if (normEmail && !normEmail.endsWith("@bhookr.lead")) {
-            orConds.push(`email.ilike.${normEmail}`);
-          }
-          if (normPhone && normPhone.length === 10) {
-            orConds.push(`phone_number.ilike.%${normPhone}%`);
-          }
-          if (orConds.length > 0) {
-            const { data: recentMatch } = await supabaseAdmin
-              .from("leads")
-              .select("*")
-              .or(orConds.join(","))
-              .order("created_at", { ascending: false })
-              .limit(1);
+        }
+      }
+    }
 
-            if (recentMatch && recentMatch.length > 0) {
-              const r = recentMatch[0];
-              const ageMinutes = (Date.now() - new Date(r.created_at).getTime()) / (1000 * 60);
-              if (ageMinutes < 60 && (!r.utm_sub_source || r.utm_sub_source === `sess:${sessionId}`)) {
-                existingSessionLead = r;
-              }
-            }
+    // Strategy 3: Check by phone or email within recent session window (last 24 hours)
+    // This connects steps 1, 2, 3, etc. for the SAME person even if sessionId wasn't saved or visitor had UTM tags!
+    if (!existingSessionLead && (normEmail || normPhone)) {
+      const orConds: string[] = [];
+      if (normEmail && !normEmail.endsWith("@bhookr.lead")) {
+        orConds.push(`email.ilike.${normEmail}`);
+      }
+      if (normPhone && normPhone.length === 10) {
+        orConds.push(`phone_number.ilike.%${normPhone}%`);
+      }
+      if (orConds.length > 0) {
+        const { data: recentMatches } = await supabaseAdmin
+          .from("leads")
+          .select("*")
+          .or(orConds.join(","))
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (recentMatches && recentMatches.length > 0) {
+          const now = Date.now();
+          // Find the most recent lead within last 24 hours for this person
+          const sameSession = recentMatches.find((r: any) => {
+            const ageHours = (now - new Date(r.created_at).getTime()) / (1000 * 60 * 60);
+            return ageHours < 24;
+          });
+          if (sameSession) {
+            existingSessionLead = sameSession;
           }
         }
       }

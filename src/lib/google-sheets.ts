@@ -5,6 +5,7 @@
 
 // Types for form data
 export interface LeadData {
+  leadId?: string;
   sessionId?: string;
   name: string;
   email: string;
@@ -82,6 +83,7 @@ export interface GoogleSheetsResponse {
   rowNumber?: number;
   email?: string;
   orderId?: string;
+  leadId?: string;
 }
 
 /**
@@ -120,6 +122,7 @@ export async function submitLeadToSheet(data: LeadData): Promise<GoogleSheetsRes
       success: true,
       message: resData?.message || 'Lead submitted successfully',
       email: preparedData.email,
+      leadId: resData?.canonicalId || resData?.lead?.id || resData?.leadId,
     };
   } catch (error: any) {
     console.error('Error submitting lead:', error);

@@ -84,6 +84,7 @@ export default function SubscriptionPage() {
   // Session ID for the visit (persisted across page navigation in sessionStorage)
   const [sessionId, setSessionId] = useState<string>("");
   const sessionIdRef = useRef<string>("");
+  const leadIdRef = useRef<string>("");
   const formDataRef = useRef(formData);
   formDataRef.current = formData;
   const currentStepRef = useRef(currentStep);
@@ -101,6 +102,11 @@ export default function SubscriptionPage() {
       }
       setSessionId(sid);
       sessionIdRef.current = sid;
+
+      const storedLeadId = sessionStorage.getItem("bhookr_subscribe_lead_id") || "";
+      if (storedLeadId) {
+        leadIdRef.current = storedLeadId;
+      }
     }
   }, []);
 
@@ -108,6 +114,7 @@ export default function SubscriptionPage() {
   const buildLeadPayload = useCallback(
     (stepNum: number, override?: Record<string, any>, isCheckout: boolean = false, isCompleted: boolean = false) => {
       const sid = sessionIdRef.current || (typeof window !== "undefined" ? sessionStorage.getItem("bhookr_subscribe_session_id") : "") || "";
+      const currentLeadId = leadIdRef.current || (typeof window !== "undefined" ? sessionStorage.getItem("bhookr_subscribe_lead_id") : "") || undefined;
       const currentData = {
         ...formDataRef.current,
         ...override,
@@ -123,6 +130,7 @@ export default function SubscriptionPage() {
       const leadData = convertToLeadData(currentData, utms);
 
       return {
+        leadId: currentLeadId,
         sessionId: sid,
         ...leadData,
         address: currentData.billingDetails?.address || undefined,
@@ -144,8 +152,14 @@ export default function SubscriptionPage() {
     async (stepNum: number, override?: Record<string, any>, isCheckout: boolean = false, isCompleted: boolean = false) => {
       try {
         const payload = buildLeadPayload(stepNum, override, isCheckout, isCompleted);
-        await submitLead(payload);
-        console.log(`✅ Synced step ${stepNum} to Supabase`);
+        const res = await submitLead(payload);
+        if (res && res.leadId) {
+          leadIdRef.current = res.leadId;
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("bhookr_subscribe_lead_id", res.leadId);
+          }
+        }
+        console.log(`✅ Synced step ${stepNum} to Supabase (leadId: ${res?.leadId || leadIdRef.current || 'unknown'})`);
       } catch (err) {
         console.warn(`Step ${stepNum} sync notice:`, err);
       }
@@ -807,7 +821,9 @@ export default function SubscriptionPage() {
               await syncStepToSupabase(9, {}, true, true);
               if (typeof window !== "undefined") {
                 sessionStorage.removeItem("bhookr_subscribe_session_id");
+                sessionStorage.removeItem("bhookr_subscribe_lead_id");
               }
+              leadIdRef.current = "";
             } catch (syncErr) {
               console.warn("Completed lead sync warning:", syncErr);
             }
