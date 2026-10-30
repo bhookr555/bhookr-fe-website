@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
-import type { PipelineEntry, PipelineStatus } from "@/lib/crm/pipeline";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { normalizeSheetStatus, type PipelineEntry, type PipelineStatus } from "@/lib/crm/pipeline";
 import type { CrmRole } from "@/lib/crm/auth";
 import { authorizeCrmStaff } from "@/lib/api-auth";
 
@@ -12,7 +13,7 @@ function normaliseEmail(email: string): string {
 
 /**
  * GET /api/crm/pipeline
- * Fetch all status mappings from Firestore (includes noteHistory)
+ * Fetch all status mappings from Firestore + Supabase leads table (includes noteHistory)
  */
 export async function GET(req: NextRequest) {
   const authStatus = await authorizeCrmStaff(req);
@@ -23,52 +24,102 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  if (!adminDb) {
-    return NextResponse.json(
-      { success: false, error: "Firebase Admin not initialized (Missing environment variables)" },
-      { status: 200 }
-    );
+  const pipeline: Record<string, PipelineEntry> = {};
+
+  // 1. Fetch from Firestore crm_pipeline collection (if initialized)
+  if (adminDb) {
+    try {
+      const snapshot = await adminDb.collection("crm_pipeline").get();
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        pipeline[doc.id] = {
+          email: doc.id,
+          leadId: data.leadId,
+          status: data.status as PipelineStatus,
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy as CrmRole,
+          notes: data.notes,
+          noteHistory: data.noteHistory ?? [],
+          statusHistory: data.statusHistory ?? [],
+          planType: data.planType,
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+        };
+      });
+    } catch (fbErr) {
+      console.warn("[pipeline API] Firestore read warning:", fbErr);
+    }
   }
 
+  // 2. Fetch persistent lead statuses directly from Supabase PostgreSQL storage
   try {
-    const snapshot = await adminDb.collection("crm_pipeline").get();
-    const pipeline: Record<string, PipelineEntry> = {};
+    const { data: sbLeads, error: sbErr } = await supabaseAdmin
+      .from("leads")
+      .select("id, email, phone_number, status, updated_at")
+      .not("status", "is", null);
 
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      pipeline[doc.id] = {
-        email: doc.id,
-        leadId: data.leadId,
-        status: data.status as PipelineStatus,
-        updatedAt: data.updatedAt,
-        updatedBy: data.updatedBy as CrmRole,
-        notes: data.notes,
-        noteHistory: data.noteHistory ?? [],
-        statusHistory: data.statusHistory ?? [],
-        planType: data.planType,
-        amount: data.amount,
-        paymentMethod: data.paymentMethod,
-      };
-    });
+    if (!sbErr && sbLeads) {
+      sbLeads.forEach((row: any) => {
+        const norm = normalizeSheetStatus(row.status) || (row.status as PipelineStatus);
+        if (!norm) return;
 
-    return NextResponse.json(
-      { success: true, pipeline },
-      { headers: { "Cache-Control": "private, no-cache, no-store, must-revalidate" } }
-    );
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "Failed to load pipeline";
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+        const entryFromSb: PipelineEntry = {
+          email: row.email || (row.id ? `lead_${row.id}` : ""),
+          leadId: row.id,
+          status: norm,
+          updatedAt: row.updated_at || new Date().toISOString(),
+          updatedBy: "caller" as CrmRole,
+        };
+
+        // Index by lead ID
+        if (row.id) {
+          const cur = pipeline[row.id];
+          if (!cur) {
+            pipeline[row.id] = entryFromSb;
+          } else if (norm !== "new" && (!cur.status || cur.status === "new")) {
+            cur.status = norm;
+          }
+        }
+
+        // Index by normalized email
+        if (row.email && !row.email.endsWith("@bhookr.lead")) {
+          const eKey = row.email.toLowerCase().trim();
+          const cur = pipeline[eKey];
+          if (!cur) {
+            pipeline[eKey] = entryFromSb;
+          } else if (norm !== "new" && (!cur.status || cur.status === "new")) {
+            cur.status = norm;
+          }
+        }
+
+        // Index by 10-digit phone
+        if (row.phone_number) {
+          const digits = String(row.phone_number).replace(/\D/g, "");
+          if (digits.length >= 10) {
+            const pKey = `phone_${digits.slice(-10)}`;
+            const cur = pipeline[pKey];
+            if (!cur) {
+              pipeline[pKey] = entryFromSb;
+            } else if (norm !== "new" && (!cur.status || cur.status === "new")) {
+              cur.status = norm;
+            }
+          }
+        }
+      });
+    }
+  } catch (sbErr) {
+    console.warn("[pipeline API] Supabase leads status read warning:", sbErr);
   }
+
+  return NextResponse.json(
+    { success: true, pipeline },
+    { headers: { "Cache-Control": "private, no-cache, no-store, must-revalidate" } }
+  );
 }
 
 /**
  * POST /api/crm/pipeline
- * Upsert or delete a status mapping.
- *
- * NOTES PROTECTION RULES:
- * - A status-only update NEVER touches the notes / noteHistory fields.
- * - action === "saveNote" appends a new entry to noteHistory and updates
- *   the top-level `notes` field. Notes are NEVER blanked by status updates.
+ * Upsert or delete a status mapping in Supabase and Firestore.
  */
 export async function POST(req: NextRequest) {
   const authStatus = await authorizeCrmStaff(req);
@@ -79,21 +130,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!adminDb) {
+  // Server-side Role Check: Auditors are strictly READ-ONLY
+  const staffRole = (authStatus.role || "").toLowerCase();
+  if (staffRole === "auditor") {
     return NextResponse.json(
-      { success: false, error: "Firebase Admin not initialized (Missing environment variables)" },
-      { status: 200 }
+      { success: false, error: "Auditors have read-only access. You cannot update lead status or notes." },
+      { status: 403 }
     );
   }
-
-    // Server-side Role Check: Auditors are strictly READ-ONLY
-    const staffRole = (authStatus.role || "").toLowerCase();
-    if (staffRole === "auditor") {
-      return NextResponse.json(
-        { success: false, error: "Auditors have read-only access. You cannot update lead status or notes." },
-        { status: 403 }
-      );
-    }
 
   try {
     const body = await req.json();
@@ -127,22 +171,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!key) {
+    if (!key && !rawLeadId) {
       return NextResponse.json(
         { success: false, error: "Missing or invalid lead identifier (leadId, email, or phone)" },
         { status: 400 }
       );
     }
 
-    const docRef = adminDb.collection("crm_pipeline").doc(key);
+    const nowIso = new Date().toISOString();
 
-    // ── DELETE ───────────────────────────────────────────────────────────────
+    // ── 1. DELETE ACTION ─────────────────────────────────────────────────────
     if (action === "delete") {
-      await docRef.delete();
-      return NextResponse.json({ success: true });
+      if (rawLeadId) {
+        await supabaseAdmin
+          .from("leads")
+          .update({ status: "new", updated_at: nowIso })
+          .eq("id", rawLeadId);
+      }
+      if (adminDb && key) {
+        await adminDb.collection("crm_pipeline").doc(key).delete();
+      }
+      return NextResponse.json({ success: true, savedTo: "supabase" });
     }
 
-    // ── NOTE SAVE (append-only) ──────────────────────────────────────────────
+    // ── 2. SAVE NOTE ACTION (append-only) ────────────────────────────────────
     if (action === "saveNote" || extras?.appendNote === true) {
       const newNoteText: string = (extras?.notes ?? "").trim();
       if (!newNoteText) {
@@ -152,42 +204,43 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Read existing doc to safely merge history
-      const existing = await docRef.get();
-      const existingData = existing.exists ? existing.data()! : {};
-      const existingHistory: Array<{ text: string; savedBy: string; savedAt: string }> =
-        existingData.noteHistory ?? [];
+      if (adminDb && key) {
+        const docRef = adminDb.collection("crm_pipeline").doc(key);
+        const existing = await docRef.get();
+        const existingData = existing.exists ? existing.data()! : {};
+        const existingHistory: Array<{ text: string; savedBy: string; savedAt: string }> =
+          existingData.noteHistory ?? [];
 
-      if (existingHistory.length === 0 && existingData.notes) {
+        if (existingHistory.length === 0 && existingData.notes) {
+          existingHistory.push({
+            text: existingData.notes,
+            savedBy: existingData.updatedBy ?? "caller",
+            savedAt: existingData.updatedAt ?? nowIso,
+          });
+        }
+
         existingHistory.push({
-          text: existingData.notes,
-          savedBy: existingData.updatedBy ?? "caller",
-          savedAt: existingData.updatedAt ?? new Date().toISOString(),
+          text: newNoteText,
+          savedBy: callerRole,
+          savedAt: nowIso,
         });
+
+        await docRef.set(
+          {
+            leadId: rawLeadId || existingData.leadId || null,
+            email: existingData.email || (rawInput.includes("@") ? rawInput.toLowerCase() : null),
+            notes: newNoteText,
+            noteHistory: existingHistory,
+            ...(existingData.status ? {} : { status: "new", updatedBy: callerRole, updatedAt: nowIso }),
+          },
+          { merge: true }
+        );
       }
 
-      existingHistory.push({
-        text: newNoteText,
-        savedBy: callerRole,
-        savedAt: new Date().toISOString(),
-      });
-
-      await docRef.set(
-        {
-          leadId: rawLeadId || existingData.leadId || null,
-          email: existingData.email || (rawInput.includes("@") ? rawInput.toLowerCase() : null),
-          notes: newNoteText,
-          noteHistory: existingHistory,
-          // Set a default status if the document is brand new
-          ...(existingData.status ? {} : { status: "new", updatedBy: callerRole, updatedAt: new Date().toISOString() }),
-        },
-        { merge: true }
-      );
-
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, savedTo: "supabase_and_firebase" });
     }
 
-    // ── STATUS UPDATE ────────────────────────────────────────────────────────
+    // ── 3. STATUS UPDATE ACTION ──────────────────────────────────────────────
     if (!status) {
       return NextResponse.json(
         { success: false, error: "Missing status" },
@@ -195,73 +248,86 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Read existing doc to record status change history
-    const existing = await docRef.get();
-    const existingData = existing.exists ? existing.data()! : {};
-    const existingStatusHistory: Array<{ status: string; changedBy: string; changedAt: string }> =
-      existingData.statusHistory ?? [];
-
-    if (existingStatusHistory.length === 0 && existingData.status) {
-      existingStatusHistory.push({
-        status: existingData.status,
-        changedBy: existingData.updatedBy || "caller",
-        changedAt: existingData.updatedAt || new Date().toISOString(),
-      });
-    }
-
-    const nowIso = new Date().toISOString();
-    existingStatusHistory.push({
-      status: status,
-      changedBy: callerRole,
-      changedAt: nowIso,
-    });
-
-    const payload: Partial<PipelineEntry> = {
-      leadId: rawLeadId || existingData.leadId || undefined,
-      email: existingData.email || (rawInput.includes("@") ? rawInput.toLowerCase() : undefined),
-      status: status as PipelineStatus,
-      updatedAt: nowIso,
-      updatedBy: callerRole,
-      statusHistory: existingStatusHistory as any,
-    };
-
-    if (extras?.planType !== undefined) payload.planType = extras.planType;
-    if (extras?.amount !== undefined) payload.amount = extras.amount;
-    if (extras?.paymentMethod !== undefined) payload.paymentMethod = extras.paymentMethod;
-
-    await docRef.set(payload, { merge: true });
-
-    // Directly update Supabase leads table so status change is recorded in PostgreSQL
+    // 3A. PRIMARY WRITE: Update Supabase leads table directly
+    let supabaseUpdated = false;
     try {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const updatePayload: { status: string; updated_at: string } = {
+        status: status,
+        updated_at: nowIso,
+      };
 
       if (rawLeadId) {
-        // Exact lead row update by ID!
-        await supabaseAdmin
+        const { error: sbErr } = await supabaseAdmin
           .from("leads")
-          .update({ status: status, updated_at: nowIso })
+          .update(updatePayload)
           .eq("id", rawLeadId);
+        if (!sbErr) supabaseUpdated = true;
       } else {
         const targetEmail = key.includes("@") ? key : extras?.email;
         const targetPhone = extras?.phone || (key.startsWith("phone_") ? key.replace("phone_", "") : "");
 
-        if (targetEmail) {
-          await supabaseAdmin
+        if (targetEmail && !targetEmail.endsWith("@bhookr.lead")) {
+          const { error: sbErr } = await supabaseAdmin
             .from("leads")
-            .update({ status: status, updated_at: nowIso })
+            .update(updatePayload)
             .ilike("email", targetEmail);
+          if (!sbErr) supabaseUpdated = true;
         } else if (targetPhone) {
-          await supabaseAdmin
+          const digits = String(targetPhone).replace(/\D/g, "").slice(-10);
+          const { error: sbErr } = await supabaseAdmin
             .from("leads")
-            .update({ status: status, updated_at: nowIso })
-            .ilike("phone_number", `%${targetPhone}%`);
+            .update(updatePayload)
+            .ilike("phone_number", `%${digits}%`);
+          if (!sbErr) supabaseUpdated = true;
         }
       }
     } catch (sbErr) {
       console.warn("[pipeline API] Supabase status update warning:", sbErr);
     }
 
-    // Forward status update to Google Sheets Apps Script if configured
+    // 3B. AUDIT TRAIL: Update Firestore crm_pipeline (if initialized)
+    if (adminDb && key) {
+      try {
+        const docRef = adminDb.collection("crm_pipeline").doc(key);
+        const existing = await docRef.get();
+        const existingData = existing.exists ? existing.data()! : {};
+        const existingStatusHistory: Array<{ status: string; changedBy: string; changedAt: string }> =
+          existingData.statusHistory ?? [];
+
+        if (existingStatusHistory.length === 0 && existingData.status) {
+          existingStatusHistory.push({
+            status: existingData.status,
+            changedBy: existingData.updatedBy || "caller",
+            changedAt: existingData.updatedAt || nowIso,
+          });
+        }
+
+        existingStatusHistory.push({
+          status: status,
+          changedBy: callerRole,
+          changedAt: nowIso,
+        });
+
+        const payload: Partial<PipelineEntry> = {
+          leadId: rawLeadId || existingData.leadId || undefined,
+          email: existingData.email || (rawInput.includes("@") ? rawInput.toLowerCase() : undefined),
+          status: status as PipelineStatus,
+          updatedAt: nowIso,
+          updatedBy: callerRole,
+          statusHistory: existingStatusHistory as any,
+        };
+
+        if (extras?.planType !== undefined) payload.planType = extras.planType;
+        if (extras?.amount !== undefined) payload.amount = extras.amount;
+        if (extras?.paymentMethod !== undefined) payload.paymentMethod = extras.paymentMethod;
+
+        await docRef.set(payload, { merge: true });
+      } catch (fbErr) {
+        console.warn("[pipeline API] Firestore audit trail update warning:", fbErr);
+      }
+    }
+
+    // 3C. Forward status update to Google Sheets Apps Script (async fire-and-forget)
     const leadsUrl = process.env.NEXT_PUBLIC_LEADS_SHEET_URL;
     if (leadsUrl && status) {
       const sheetPayload = {
@@ -277,7 +343,12 @@ export async function POST(req: NextRequest) {
       }).catch((err) => console.warn("[pipeline API] Google Sheet status sync warning:", err));
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      savedTo: "supabase",
+      status,
+      leadId: rawLeadId || null,
+    });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to update pipeline";
     return NextResponse.json({ success: false, error: msg }, { status: 500 });

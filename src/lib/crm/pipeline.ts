@@ -280,7 +280,7 @@ export function cleanPhoneKey(phone?: string | number | null): string {
 export function normalizeSheetStatus(rawStatus?: string | null): PipelineStatus | null {
   if (!rawStatus) return null;
   const s = String(rawStatus).trim().toLowerCase().replace(/[-\s]+/g, "_");
-  if (s === "hot" || s === "hot_prospect" || s === "hotprospect") return "hot_prospect";
+  if (s === "hot" || s === "hot_prospect" || s === "hotprospect" || s === "interested") return "hot_prospect";
   if (s === "followup" || s === "follow_up" || s === "follow_up_pending") return "follow_up";
   if (s === "pending") return "pending";
   if (s === "trial" || s === "trial_requested" || s === "trial_offered") return "trial_requested";
