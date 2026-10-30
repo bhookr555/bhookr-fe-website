@@ -288,6 +288,7 @@ export async function POST(req: NextRequest) {
       if (isPopulated(city)) updatePayload.city = city;
       if (isPopulated(state)) updatePayload.state = state;
       if (isPopulated(pinCode)) updatePayload.pin_code = pinCode;
+      if (body.leadSource) updatePayload.lead_source = body.leadSource;
       if (body.utmSource) updatePayload.utm_source = body.utmSource;
       if (body.utmSubSource) {
         updatePayload.utm_sub_source = body.utmSubSource;

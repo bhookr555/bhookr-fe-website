@@ -169,6 +169,33 @@ function renderAdSourceBadge(lead: LeadRow) {
     );
   }
 
+  if (lead.leadSource === "both") {
+    return (
+      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
+        🔗 Website + Client Form
+      </span>
+    );
+  }
+
+  if (lead.leadSource === "client_form") {
+    const infoText = rawSrc && !rawSrc.startsWith("sess:")
+      ? (rawSrc.startsWith("google_form:") ? rawSrc.slice(12) : rawSrc)
+      : null;
+
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-md bg-purple-50 px-2.5 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800">
+          📋 Client Insight Form
+        </span>
+        {infoText && (
+          <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 truncate max-w-[140px]" title={infoText}>
+            Via: {infoText}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   if (rawSrc || sub) {
     return (
       <div className="flex flex-col gap-0.5">
@@ -189,22 +216,6 @@ function renderAdSourceBadge(lead: LeadRow) {
     );
   }
 
-  if (lead.leadSource === "both") {
-    return (
-      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
-        🔗 Website + Client Form
-      </span>
-    );
-  }
-
-  if (lead.leadSource === "client_form") {
-    return (
-      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
-        📑 Client Form
-      </span>
-    );
-  }
-
   if ((lead as any).identityConflict) {
     return (
       <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700">
@@ -214,7 +225,7 @@ function renderAdSourceBadge(lead: LeadRow) {
   }
 
   return (
-    <span className="inline-flex w-fit items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700">
+    <span className="inline-flex w-fit items-center gap-1 rounded-md bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800">
       🌐 Website Lead
     </span>
   );
