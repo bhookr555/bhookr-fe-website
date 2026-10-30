@@ -32,21 +32,51 @@ export async function POST(req: NextRequest) {
     const uid = decodedToken.uid;
     const userEmail = String(decodedToken.email ?? "").toLowerCase().trim();
 
-    // Fetch user document from Firestore users collection
-    const userDoc = await adminDb.collection("users").doc(uid).get();
+    let role: string | null = null;
 
-    if (
-      !userDoc.exists ||
-      !userDoc.data()?.role ||
-      !VALID_CRM_ROLES.has(userDoc.data()?.role)
-    ) {
+    // Check role in Supabase crm_users table first (database storage, zero Firebase quota consumption)
+    try {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data: supaUser, error: supaErr } = await supabaseAdmin
+        .from("crm_users")
+        .select("role")
+        .or(`id.eq.${uid},email.ilike.${userEmail}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (!supaErr && supaUser?.role && VALID_CRM_ROLES.has(supaUser.role)) {
+        role = supaUser.role;
+      }
+    } catch (sbErr) {
+      logger.warn("Supabase crm_users check notice:", sbErr as Error);
+    }
+
+    // Fallback: Fetch user document from Firestore users collection if not found in Supabase
+    if (!role && adminDb) {
+      try {
+        const userDoc = await adminDb.collection("users").doc(uid).get();
+        if (
+          userDoc.exists &&
+          userDoc.data()?.role &&
+          VALID_CRM_ROLES.has(userDoc.data()?.role)
+        ) {
+          role = userDoc.data()!.role as string;
+        }
+      } catch (fbErr: any) {
+        logger.warn("Firestore user lookup failed (e.g. quota exceeded):", fbErr);
+        // If Firestore quota is exhausted but user authenticated via Firebase Auth, check if admin email
+        if (userEmail === "bhookr555@gmail.com") {
+          role = "admin";
+        }
+      }
+    }
+
+    if (!role) {
       return NextResponse.json(
         { success: false, error: "No CRM access assigned to this account. Contact an administrator." },
         { status: 403 }
       );
     }
-
-    const role = userDoc.data()!.role as string;
 
     // Establish secure cookies
     const cookieStore = await cookies();

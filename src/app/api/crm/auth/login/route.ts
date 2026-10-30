@@ -67,16 +67,44 @@ export async function POST(req: NextRequest) {
     // 2. Determine Role & Validate Access
     let userRole: CrmRole = "admin";
 
-    if (idToken && uid && adminDb && adminAuth) {
-      // Fetch staff record from Firestore
-      const userDoc = await adminDb.collection("users").doc(uid).get();
-      if (
-        userDoc.exists &&
-        userDoc.data()?.role &&
-        VALID_CRM_ROLES.has(userDoc.data()?.role)
-      ) {
-        userRole = userDoc.data()!.role as CrmRole;
-      } else {
+    if (idToken && uid) {
+      // 2A. Check Supabase crm_users table first (zero Firebase quota usage)
+      try {
+        const { supabaseAdmin } = await import("@/lib/supabase/server");
+        const { data: supaUser, error: supaErr } = await supabaseAdmin
+          .from("crm_users")
+          .select("role")
+          .or(`id.eq.${uid},email.ilike.${trimmedEmail}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (!supaErr && supaUser?.role && VALID_CRM_ROLES.has(supaUser.role)) {
+          userRole = supaUser.role as CrmRole;
+        }
+      } catch (sbErr) {
+        logger.warn("Supabase crm_users login check notice:", sbErr as Error);
+      }
+
+      // 2B. Fallback to Firestore users collection
+      if (!userRole && adminDb) {
+        try {
+          const userDoc = await adminDb.collection("users").doc(uid).get();
+          if (
+            userDoc.exists &&
+            userDoc.data()?.role &&
+            VALID_CRM_ROLES.has(userDoc.data()?.role)
+          ) {
+            userRole = userDoc.data()!.role as CrmRole;
+          }
+        } catch (fbErr: any) {
+          logger.warn("Firestore user lookup failed (e.g. quota exceeded):", fbErr);
+          if (trimmedEmail === "bhookr555@gmail.com") {
+            userRole = "admin";
+          }
+        }
+      }
+
+      if (!userRole) {
         return NextResponse.json(
           { success: false, error: "No CRM access assigned to this account. Contact an administrator." },
           { status: 403 }
