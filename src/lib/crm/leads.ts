@@ -26,6 +26,8 @@ export interface LeadRow {
   totalSteps?: number;
   formStatus?: 'partial' | 'completed';
   isRepeat?: boolean;
+  isDuplicate?: boolean;
+  duplicateCount?: number;
   firstLeadId?: string | null;
   address?: string;
   city?: string;

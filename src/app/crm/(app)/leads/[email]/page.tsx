@@ -286,14 +286,22 @@ export default function LeadDetailPage() {
                 );
               })()}
             </div>
-            {lead.isRepeat && (
+            {(lead.isRepeat || (lead.duplicateCount && lead.duplicateCount >= 2)) && (
               <button
                 type="button"
                 onClick={() => setEarlierFormsOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-200 transition dark:bg-red-950/60 dark:text-red-300"
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border transition ${
+                  (lead.duplicateCount || 0) >= 3
+                    ? "bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200 dark:bg-rose-950/60 dark:text-rose-300"
+                    : "bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
+                }`}
               >
-                <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-                Filled before (view earlier forms)
+                <span>🔁</span>
+                <span>
+                  {lead.duplicateCount && lead.duplicateCount >= 2
+                    ? `Duplicate (${lead.duplicateCount} submissions)`
+                    : "Duplicate (Filled before)"}
+                </span>
               </button>
             )}
             {isGoogleFormLead(lead) ? (

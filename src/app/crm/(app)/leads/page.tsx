@@ -76,10 +76,16 @@ function renderCell(row: LeadRow, key: keyof LeadRow): React.ReactNode {
   }
 
   if (key === "isRepeat") {
-    return row.isRepeat ? (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800 dark:bg-red-950/40 dark:text-red-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
-        Yes
+    const isDup = Boolean(row.isRepeat || (row.duplicateCount && row.duplicateCount >= 2));
+    const count = row.duplicateCount || 1;
+    return isDup ? (
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        count >= 3
+          ? "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+          : "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+      }`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${count >= 3 ? "bg-rose-600 animate-pulse" : "bg-amber-600"}`} />
+        {count >= 2 ? `Duplicate (${count}x)` : "Yes"}
       </span>
     ) : (
       <span className="text-gray-400 text-xs">No</span>

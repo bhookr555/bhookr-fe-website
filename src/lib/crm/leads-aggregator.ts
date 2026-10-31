@@ -201,16 +201,14 @@ export function deduplicateAndMergeLeads(
 
   const normalizedClient: MergedLeadRow[] = clientFormLeads.map((r) => {
     const raw = sanitizeLeadRow(r as Record<string, any>);
-    const hasUtm = !!(raw.utmSource || raw.utmSubSource);
-    const src = hasUtm ? "website" : "client_form";
     return {
       ...raw,
       id: raw.id || r.id,
       sessionId: raw.sessionId || raw.session_id,
       name: extractLeadName(raw) || raw.name || "Lead",
       timestamp: extractLeadTimestamp(raw) || raw.timestamp || "",
-      leadSource: src,
-      allSources: [sourceLabel(src)],
+      leadSource: "client_form",
+      allSources: ["Google Form Lead"],
       isRepeat: Boolean(raw.isRepeat || raw.is_repeat),
       firstLeadId: raw.firstLeadId || raw.first_lead_id || null,
       formStatus: raw.formStatus || raw.form_status,
@@ -223,67 +221,72 @@ export function deduplicateAndMergeLeads(
     } as MergedLeadRow;
   });
 
-  // Consolidate rows belonging to the SAME person / entity into ONE line
-  // Tracks across form steps by sessionId, 10-digit mobile phone, or email
-  const allRaw = [...normalizedWeb, ...normalizedClient];
-  allRaw.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
+  // Consolidate rows that share the EXACT same non-empty sessionId
+  // (e.g. progressive step saves within one single browser session).
+  // Separate submissions across different sessions, dates, or sources (Website vs Google Form)
+  // are NEVER collapsed into one, preserving all user submissions.
+  const sessionMap = new Map<string, MergedLeadRow>();
+  const distinctLeads: MergedLeadRow[] = [];
 
-  const entityMap = new Map<string, MergedLeadRow>();
-  const phoneToKey = new Map<string, string>();
-  const emailToKey = new Map<string, string>();
-  const sessionToKey = new Map<string, string>();
-
-  for (const lead of allRaw) {
-    const p = normalizePhone(lead.phoneNumber);
-    const e = normalizeEmail(lead.email);
+  for (const lead of [...normalizedWeb, ...normalizedClient]) {
     const s = String(lead.sessionId || (lead.utmSubSource?.startsWith("sess:") ? lead.utmSubSource.slice(5) : "") || "").trim();
-
-    let existingKey: string | null = null;
-    if (s && sessionToKey.has(s)) {
-      existingKey = sessionToKey.get(s)!;
-    } else if (p && p.length === 10 && phoneToKey.has(p)) {
-      existingKey = phoneToKey.get(p)!;
-    } else if (e && !e.endsWith("@bhookr.lead") && emailToKey.has(e)) {
-      existingKey = emailToKey.get(e)!;
-    }
-
-    if (!existingKey) {
-      const key = (s ? `sess:${s}` : "") ||
-                  (p && p.length === 10 ? `phone:${p}` : "") ||
-                  (e && !e.endsWith("@bhookr.lead") ? `email:${e}` : "") ||
-                  `id:${lead.id || Math.random()}`;
-
-      if (s) sessionToKey.set(s, key);
-      if (p && p.length === 10) phoneToKey.set(p, key);
-      if (e && !e.endsWith("@bhookr.lead")) emailToKey.set(e, key);
-
-      entityMap.set(key, { ...lead });
-    } else {
-      const existing = entityMap.get(existingKey)!;
-      const higherStep = Math.max(Number(existing.lastStepCompleted || 0), Number(lead.lastStepCompleted || 0));
-      const merged = mergeLeadRows(existing, lead);
-      merged.lastStepCompleted = higherStep;
-      if (
-        existing.formStatus === "completed" ||
-        lead.formStatus === "completed" ||
-        higherStep >= 8 ||
-        existing.checkoutVisited ||
-        lead.checkoutVisited
-      ) {
-        merged.formStatus = "completed";
+    if (s) {
+      if (!sessionMap.has(s)) {
+        sessionMap.set(s, { ...lead });
+      } else {
+        const existing = sessionMap.get(s)!;
+        const higherStep = Math.max(Number(existing.lastStepCompleted || 0), Number(lead.lastStepCompleted || 0));
+        const merged = mergeLeadRows(existing, lead);
+        merged.lastStepCompleted = higherStep;
+        if (
+          existing.formStatus === "completed" ||
+          lead.formStatus === "completed" ||
+          higherStep >= 8 ||
+          existing.checkoutVisited ||
+          lead.checkoutVisited
+        ) {
+          merged.formStatus = "completed";
+        }
+        sessionMap.set(s, merged);
       }
-
-      if (s) sessionToKey.set(s, existingKey);
-      if (p && p.length === 10) phoneToKey.set(p, existingKey);
-      if (e && !e.endsWith("@bhookr.lead")) emailToKey.set(e, existingKey);
-
-      entityMap.set(existingKey, merged);
+    } else {
+      distinctLeads.push({ ...lead });
     }
   }
 
-  const finalLeads = [...entityMap.values()];
-  finalLeads.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
-  return finalLeads;
+  const allDistinct = [...sessionMap.values(), ...distinctLeads];
+
+  // Cross-reference all distinct submissions to calculate duplicate / repeat occurrences.
+  // Matches 10-digit phone number or normalized email across ALL sources.
+  const phoneCounts = new Map<string, number>();
+  const emailCounts = new Map<string, number>();
+
+  for (const lead of allDistinct) {
+    const p = normalizePhone(lead.phoneNumber);
+    const e = normalizeEmail(lead.email);
+    if (p && p.length === 10) {
+      phoneCounts.set(p, (phoneCounts.get(p) || 0) + 1);
+    }
+    if (e && !e.endsWith("@bhookr.lead")) {
+      emailCounts.set(e, (emailCounts.get(e) || 0) + 1);
+    }
+  }
+
+  for (const lead of allDistinct) {
+    const p = normalizePhone(lead.phoneNumber);
+    const e = normalizeEmail(lead.email);
+    const pCount = (p && p.length === 10) ? (phoneCounts.get(p) || 0) : 0;
+    const eCount = (e && !e.endsWith("@bhookr.lead")) ? (emailCounts.get(e) || 0) : 0;
+    const count = Math.max(pCount, eCount, 1);
+    const isDup = count >= 2 || Boolean(lead.isRepeat);
+
+    lead.duplicateCount = count;
+    lead.isRepeat = isDup;
+    lead.isDuplicate = isDup;
+  }
+
+  allDistinct.sort((a, b) => tsValue(b.timestamp) - tsValue(a.timestamp));
+  return allDistinct;
 }
 
 export const MERGED_LEADS_CACHE_TTL_MS = 60 * 1000;
