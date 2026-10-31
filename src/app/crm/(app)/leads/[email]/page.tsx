@@ -20,6 +20,7 @@ import {
 import {
   formatTimestamp,
   humanize,
+  isGoogleFormLead,
   type LeadRow,
 } from "@/lib/crm/leads";
 import {
@@ -295,9 +296,9 @@ export default function LeadDetailPage() {
                 Filled before (view earlier forms)
               </button>
             )}
-            {lead.leadSource === "client_form" ? (
+            {isGoogleFormLead(lead) ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-800 dark:bg-purple-950/50 dark:text-purple-300">
-                📑 Client Form
+                📋 Google Form Lead
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950/50 dark:text-blue-300">

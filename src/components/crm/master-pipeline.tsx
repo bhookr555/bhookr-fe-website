@@ -42,6 +42,7 @@ import {
   parseLeadDate,
   tsValue,
   humanize,
+  isGoogleFormLead,
   type LeadRow,
 } from "@/lib/crm/leads";
 import { deduplicateAndMergeLeads, getMergedLeadsCached, type MergedLeadRow } from "@/lib/crm/leads-aggregator";
@@ -118,108 +119,10 @@ function localDateString(input: Date | string | number | null | undefined): stri
 const formatLeadTimestamp = formatTimestamp;
 
 function renderAdSourceBadge(lead: LeadRow) {
-  const src = String(lead.utmSource || "").toLowerCase().trim();
-  const sub = String(lead.utmSubSource || "").trim();
-  const rawSrc = String(lead.utmSource || "").trim();
-
-  const isMeta =
-    src.includes("meta") ||
-    src.includes("facebook") ||
-    src.includes("fb") ||
-    src.includes("ig") ||
-    src.includes("instagram");
-
-  if (isMeta) {
+  if (isGoogleFormLead(lead)) {
     return (
-      <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800">
-          📢 Meta / IG Ad
-        </span>
-        {sub && (
-          <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 truncate max-w-[140px]">
-            Sub: {sub}
-          </span>
-        )}
-        {rawSrc && (
-          <span className="text-[10px] font-mono text-purple-500/80 dark:text-purple-400/80 truncate max-w-[140px]">
-            UTM: {rawSrc}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  if (src.includes("google") || src.includes("gads") || src.includes("adwords")) {
-    return (
-      <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
-          🎯 Google Ad
-        </span>
-        {sub && (
-          <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400 truncate max-w-[140px]">
-            Sub: {sub}
-          </span>
-        )}
-        {rawSrc && (
-          <span className="text-[10px] font-mono text-blue-500/80 dark:text-blue-400/80 truncate max-w-[140px]">
-            UTM: {rawSrc}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  if (lead.leadSource === "both") {
-    return (
-      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
-        🔗 Website + Client Form
-      </span>
-    );
-  }
-
-  if (lead.leadSource === "client_form") {
-    const infoText = rawSrc && !rawSrc.startsWith("sess:")
-      ? (rawSrc.startsWith("google_form:") ? rawSrc.slice(12) : rawSrc)
-      : null;
-
-    return (
-      <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1.5 rounded-md bg-purple-50 px-2.5 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800">
-          📋 Client Insight Form
-        </span>
-        {infoText && (
-          <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 truncate max-w-[140px]" title={infoText}>
-            Via: {infoText}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  if (rawSrc || sub) {
-    return (
-      <div className="flex flex-col gap-0.5">
-        <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
-          📣 {humanize(rawSrc || "Campaign")}
-        </span>
-        {sub && (
-          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 truncate max-w-[140px]">
-            Sub: {sub}
-          </span>
-        )}
-        {rawSrc && (
-          <span className="text-[10px] font-mono text-amber-500/80 dark:text-amber-400/80 truncate max-w-[140px]">
-            UTM: {rawSrc}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  if ((lead as any).identityConflict) {
-    return (
-      <span className="inline-flex w-fit items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700">
-        ⚠️ Identity Conflict (Review)
+      <span className="inline-flex w-fit items-center gap-1.5 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800">
+        📋 Google Form Lead
       </span>
     );
   }
@@ -428,12 +331,15 @@ export function MasterPipeline() {
     return annotatedLeads.filter((a) => {
       // Source filter
       if (sourceFilter !== "all") {
-        if (sourceFilter === "ads") {
+        const isGF = isGoogleFormLead(a.lead);
+        if (sourceFilter === "client_form") {
+          if (!isGF) return false;
+        } else if (sourceFilter === "website") {
+          if (isGF) return false;
+        } else if (sourceFilter === "ads") {
           const src = String(a.lead.utmSource || "").trim();
           const sub = String(a.lead.utmSubSource || "").trim();
           if (!src && !sub) return false;
-        } else if ((a.lead.leadSource || "website") !== sourceFilter) {
-          return false;
         }
       }
 
@@ -936,10 +842,9 @@ export function MasterPipeline() {
         </span>
         <div className="inline-flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
           {[
-            { key: "all", label: "📂 All Sources" },
+            { key: "all", label: "📂 All Leads" },
             { key: "website", label: "🌐 Website Leads" },
-            { key: "client_form", label: "📑 Client Form" },
-            { key: "ads", label: "📢 Ad Leads" },
+            { key: "client_form", label: "📋 Google Form Leads" },
           ].map(({ key, label }) => (
             <button
               key={key}

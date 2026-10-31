@@ -172,3 +172,20 @@ export function formatTimestamp(value: string | number | Date | null | undefined
   });
 }
 
+/**
+ * Checks whether a lead originated from Google Form intake or website form.
+ */
+export function isGoogleFormLead(lead: LeadRow | Record<string, any> | null | undefined): boolean {
+  if (!lead) return false;
+  const l = lead as any;
+  if (l.leadSource === "client_form" || l.lead_source === "client_form") return true;
+  const src = String(l.utmSource || l.utm_source || "").toLowerCase().trim();
+  const sub = String(l.utmSubSource || l.utm_sub_source || "").toLowerCase().trim();
+  return (
+    src.includes("google_form") ||
+    src.includes("client_form") ||
+    sub.includes("google_form") ||
+    sub.includes("client_form")
+  );
+}
+

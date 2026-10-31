@@ -1,4 +1,4 @@
-import { type LeadRow, formatTimestamp, humanize } from "@/lib/crm/leads";
+import { type LeadRow, formatTimestamp, humanize, isGoogleFormLead } from "@/lib/crm/leads";
 import { PIPELINE_STATUSES, type PipelineStatus } from "@/lib/crm/pipeline";
 
 export interface AnnotatedLead {
@@ -56,8 +56,7 @@ export function calculateReportMetrics(
   const untouchedLeads: AnnotatedLead[] = [];
 
   for (const item of leads) {
-    const src = item.lead.leadSource || "website";
-    if (src === "client_form") {
+    if (isGoogleFormLead(item.lead)) {
       clientFormLeadsCount++;
     } else {
       websiteLeadsCount++;
@@ -194,9 +193,9 @@ export function generateReportHtml(metrics: ReportSummaryMetrics, staffRole = "A
       <td>${item.lead.phoneNumber || "—"}</td>
       <td>
         <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; background-color: ${
-          item.lead.leadSource === "client_form" ? "#f3e8ff" : "#e0f2fe"
-        }; color: ${item.lead.leadSource === "client_form" ? "#7e22ce" : "#0369a1"};">
-          ${item.lead.leadSource === "client_form" ? "📑 Client Form" : "🌐 Website Lead"}
+          isGoogleFormLead(item.lead) ? "#f3e8ff" : "#e0f2fe"
+        }; color: ${isGoogleFormLead(item.lead) ? "#7e22ce" : "#0369a1"};">
+          ${isGoogleFormLead(item.lead) ? "📋 Google Form Lead" : "🌐 Website Lead"}
         </span>
       </td>
       <td>${formatTimestamp(item.lead.timestamp)}</td>
@@ -217,9 +216,9 @@ export function generateReportHtml(metrics: ReportSummaryMetrics, staffRole = "A
       <td>${item.lead.phoneNumber || "—"}</td>
       <td>
         <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background-color: ${
-          item.lead.leadSource === "client_form" ? "#f3e8ff" : "#f1f5f9"
-        }; color: ${item.lead.leadSource === "client_form" ? "#6b21a8" : "#475569"};">
-          ${item.lead.leadSource === "client_form" ? "📑 Client Form" : "🌐 Website"}
+          isGoogleFormLead(item.lead) ? "#f3e8ff" : "#f1f5f9"
+        }; color: ${isGoogleFormLead(item.lead) ? "#6b21a8" : "#475569"};">
+          ${isGoogleFormLead(item.lead) ? "📋 Google Form Lead" : "🌐 Website Lead"}
         </span>
       </td>
       <td>${humanize(item.lead.subscriptionType) || "—"}${item.lead.plan ? ` (${item.lead.plan})` : ""}</td>
