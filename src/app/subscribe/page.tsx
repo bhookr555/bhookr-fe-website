@@ -240,6 +240,18 @@ export default function SubscriptionPage() {
   };
 
   const handlePersonalInfoNext = async (data: PersonalInfoFormData) => {
+    // Generate fresh session and clear any previous lead ID for a new submission
+    const freshSid = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    setSessionId(freshSid);
+    sessionIdRef.current = freshSid;
+    leadIdRef.current = "";
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("bhookr_subscribe_session_id", freshSid);
+      sessionStorage.removeItem("bhookr_subscribe_lead_id");
+    }
+
     const updatedData = user ? { ...data, userId: user.uid } : data;
     updateFormData({ personalInfo: updatedData });
     syncStepToSupabase(1, { personalInfo: updatedData });

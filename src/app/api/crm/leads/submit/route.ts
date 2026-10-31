@@ -131,7 +131,8 @@ export async function POST(req: NextRequest) {
     let existingSessionLead: any = null;
 
     // Strategy 1: Check by direct leadId if client already has a record ID
-    if (leadId) {
+    // ONLY check if stepNum > 1 (Step 1 indicates a fresh submission attempt)
+    if (leadId && stepNum > 1) {
       const { data: idMatch } = await supabaseAdmin
         .from("leads")
         .select("*")
@@ -140,12 +141,17 @@ export async function POST(req: NextRequest) {
         .limit(1);
 
       if (idMatch && idMatch.length > 0) {
-        existingSessionLead = idMatch[0];
+        const lead = idMatch[0];
+        const isCompleted = lead.form_status === "completed" || (lead.last_step_completed && lead.last_step_completed >= 8) || lead.checkout_visited;
+        if (!isCompleted) {
+          existingSessionLead = lead;
+        }
       }
     }
 
-    // Strategy 2: Check by session_id (if column exists)
-    if (!existingSessionLead && sessionId) {
+    // Strategy 2: Check by session_id (if column exists) or utm_sub_source
+    // ONLY for progressive steps (stepNum > 1) within the same active session
+    if (!existingSessionLead && sessionId && stepNum > 1) {
       const { data: sessionMatch, error: sessionErr } = await supabaseAdmin
         .from("leads")
         .select("*")
@@ -169,9 +175,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Strategy 3: Check by phone or email within recent session window (last 24 hours)
-    // This connects steps 1, 2, 3, etc. for the SAME person even if sessionId wasn't saved or visitor had UTM tags!
-    if (!existingSessionLead && (normEmail || normPhone)) {
+    // Strategy 3: Check by phone or email within recent session window
+    // ONLY connect progressive steps (stepNum > 1) within 15 minutes if NOT completed.
+    // If stepNum === 1 or if previously completed, do NOT hijack the existing lead —
+    // it is a new submission occasion / duplicate that must be captured as its own latest row!
+    if (!existingSessionLead && stepNum > 1 && (normEmail || normPhone)) {
       const orConds: string[] = [];
       if (normEmail && !normEmail.endsWith("@bhookr.lead")) {
         orConds.push(`email.ilike.${normEmail}`);
@@ -185,17 +193,17 @@ export async function POST(req: NextRequest) {
           .select("*")
           .or(orConds.join(","))
           .order("created_at", { ascending: false })
-          .limit(10);
+          .limit(5);
 
         if (recentMatches && recentMatches.length > 0) {
           const now = Date.now();
-          // Find the most recent lead within last 24 hours for this person
-          const sameSession = recentMatches.find((r: any) => {
-            const ageHours = (now - new Date(r.created_at).getTime()) / (1000 * 60 * 60);
-            return ageHours < 24;
+          const activeLead = recentMatches.find((r: any) => {
+            const ageMinutes = (now - new Date(r.created_at).getTime()) / (1000 * 60);
+            const isCompleted = r.form_status === "completed" || (r.last_step_completed && r.last_step_completed >= 8) || r.checkout_visited;
+            return !isCompleted && ageMinutes < 15;
           });
-          if (sameSession) {
-            existingSessionLead = sameSession;
+          if (activeLead) {
+            existingSessionLead = activeLead;
           }
         }
       }
