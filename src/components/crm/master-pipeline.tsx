@@ -326,8 +326,8 @@ export function MasterPipeline() {
     });
   }, [leads, pipeline, verifiedEmails]);
 
-  // 1. Date & Source pre-filtering for consistent counts and list display
-  const baseFilteredLeads = useMemo(() => {
+  // 1. All-time source & quick-filter leads (used for status counts and all-time status filtering)
+  const allTimeSourceFilteredLeads = useMemo(() => {
     return annotatedLeads.filter((a) => {
       // Source filter
       if (sourceFilter !== "all") {
@@ -341,27 +341,6 @@ export function MasterPipeline() {
           const sub = String(a.lead.utmSubSource || "").trim();
           if (!src && !sub) return false;
         }
-      }
-
-      // Date filter
-      if (dateMode === "today") {
-        if (todayStr && a.dateKey !== todayStr) return false;
-      } else if (dateMode === "24h") {
-        const now = Date.now();
-        const h24Ms = 24 * 60 * 60 * 1000;
-        const val = tsValue(a.lead.timestamp);
-        if (!(val > 0 && now - val <= h24Ms)) return false;
-      } else if (dateMode === "7d") {
-        const now = Date.now();
-        const d7Ms = 7 * 24 * 60 * 60 * 1000;
-        const val = tsValue(a.lead.timestamp);
-        if (!(val > 0 && now - val <= d7Ms)) return false;
-      } else if (dateMode === "single") {
-        if (singleDate && a.dateKey !== singleDate) return false;
-      } else if (dateMode === "range") {
-        if (!a.dateKey) return false;
-        if (startDate && a.dateKey < startDate) return false;
-        if (endDate && a.dateKey > endDate) return false;
       }
 
       // Quick filter: Not completed
@@ -383,16 +362,48 @@ export function MasterPipeline() {
   }, [
     annotatedLeads,
     sourceFilter,
+    notCompletedOnly,
+    filledBeforeOnly,
+  ]);
+
+  // 2. Date-filtered leads (applies dateMode to allTimeSourceFilteredLeads)
+  const baseFilteredLeads = useMemo(() => {
+    return allTimeSourceFilteredLeads.filter((a) => {
+      // Date filter
+      if (dateMode === "today") {
+        if (todayStr && a.dateKey !== todayStr) return false;
+      } else if (dateMode === "24h") {
+        const now = Date.now();
+        const h24Ms = 24 * 60 * 60 * 1000;
+        const val = tsValue(a.lead.timestamp);
+        if (!(val > 0 && now - val <= h24Ms)) return false;
+      } else if (dateMode === "7d") {
+        const now = Date.now();
+        const d7Ms = 7 * 24 * 60 * 60 * 1000;
+        const val = tsValue(a.lead.timestamp);
+        if (!(val > 0 && now - val <= d7Ms)) return false;
+      } else if (dateMode === "single") {
+        if (singleDate && a.dateKey !== singleDate) return false;
+      } else if (dateMode === "range") {
+        if (!a.dateKey) return false;
+        if (startDate && a.dateKey < startDate) return false;
+        if (endDate && a.dateKey > endDate) return false;
+      }
+
+      return true;
+    });
+  }, [
+    allTimeSourceFilteredLeads,
     dateMode,
     todayStr,
     singleDate,
     startDate,
     endDate,
-    notCompletedOnly,
-    filledBeforeOnly,
   ]);
 
-  // Counts strictly reflect active source, date, and quick filters
+  // Counts for each pipeline status represent ALL-TIME leads in that status
+  // (so telecallers/owners see the entire pipeline at a glance).
+  // "all" count reflects the currently active date filter (e.g. today's total).
   const counts = useMemo(() => {
     const map: Record<PipelineStatus | "all", number> = {
       all: baseFilteredLeads.length,
@@ -405,17 +416,23 @@ export function MasterPipeline() {
       converted: 0,
       sale_rejected: 0,
     };
-    for (const a of baseFilteredLeads) {
+    for (const a of allTimeSourceFilteredLeads) {
       if (map[a.status] !== undefined) {
         map[a.status]++;
       }
     }
     return map;
-  }, [baseFilteredLeads]);
+  }, [baseFilteredLeads.length, allTimeSourceFilteredLeads]);
 
   // ── VISIBLE rows — uses debouncedSearch and status chip ─────────────────
+  // When a specific status chip is clicked (filter !== "all"), we show ALL-TIME leads in that status.
+  // When viewing "All" (filter === "all"), we respect the selected date filter (default: today).
   const visible = useMemo(() => {
-    const matching = baseFilteredLeads.filter((a) => {
+    // If a specific status is chosen, pull from allTimeSourceFilteredLeads so telecallers see all leads in that stage.
+    // If 'all' is chosen, respect baseFilteredLeads (which applies dateMode).
+    const sourcePool = filter === "all" ? baseFilteredLeads : allTimeSourceFilteredLeads;
+
+    const matching = sourcePool.filter((a) => {
       if (filter !== "all" && a.status !== filter) return false;
 
       if (debouncedSearch.trim()) {
@@ -460,7 +477,7 @@ export function MasterPipeline() {
       );
     }
     return sorted;
-  }, [baseFilteredLeads, filter, debouncedSearch, sortBy]);
+  }, [baseFilteredLeads, allTimeSourceFilteredLeads, filter, debouncedSearch, sortBy]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -740,16 +757,24 @@ export function MasterPipeline() {
           <h2 className="mt-0.5 text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
             {dashLoading
               ? "Loading…"
-              : `${visible.length} of ${baseFilteredLeads.length} leads`}
+              : filter === "all"
+              ? `${visible.length} of ${baseFilteredLeads.length} leads`
+              : `${visible.length} ${PIPELINE_STATUSES.find((s) => s.value === filter)?.label || filter} leads (All-time)`}
           </h2>
           {!dashLoading && (
             <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-              {dateModeLabel[dateMode]}
-              {dateMode === "single" && singleDate
-                ? ` · ${singleDate}`
-                : dateMode === "range" && (startDate || endDate)
-                ? ` · ${startDate || "any"} to ${endDate || "any"}`
-                : ""}
+              {filter === "all" ? (
+                <>
+                  {dateModeLabel[dateMode]}
+                  {dateMode === "single" && singleDate
+                    ? ` · ${singleDate}`
+                    : dateMode === "range" && (startDate || endDate)
+                    ? ` · ${startDate || "any"} to ${endDate || "any"}`
+                    : ""}
+                </>
+              ) : (
+                <>🌐 All-time pipeline stage · select &quot;All&quot; to filter by date</>
+              )}
               {" · "}status changes save to database · last updated{" "}
               {lastUpdated?.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
